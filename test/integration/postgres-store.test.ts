@@ -65,4 +65,40 @@ describe.skipIf(!testDatabaseUrl)('PostgresStore', () => {
     const replayed = await restartedServices.events.list(session.id, 1);
     expect(replayed.map((event) => event.type)).toEqual(['message_created']);
   });
+
+  it('claims each pending message once under concurrent workers', async () => {
+    const services = createServices(store);
+    const firstSession = await services.sessions.create({ title: 'First' });
+    const secondSession = await services.sessions.create({ title: 'Second' });
+    await services.messages.enqueue({ sessionId: firstSession.id, prompt: 'first' });
+    await services.messages.enqueue({ sessionId: secondSession.id, prompt: 'second' });
+
+    const now = new Date();
+    const claims = await Promise.all([
+      store.claimNextPendingMessage({
+        runId: '00000000-0000-4000-8000-000000000001',
+        runnerType: 'fake',
+        leaseOwner: 'worker-1',
+        leaseExpiresAt: new Date(now.getTime() + 60_000),
+        now,
+      }),
+      store.claimNextPendingMessage({
+        runId: '00000000-0000-4000-8000-000000000002',
+        runnerType: 'fake',
+        leaseOwner: 'worker-2',
+        leaseExpiresAt: new Date(now.getTime() + 60_000),
+        now,
+      }),
+    ]);
+
+    expect(claims.every(Boolean)).toBe(true);
+    expect(new Set(claims.map((claim) => claim!.message.id)).size).toBe(2);
+    await expect(store.claimNextPendingMessage({
+      runId: '00000000-0000-4000-8000-000000000003',
+      runnerType: 'fake',
+      leaseOwner: 'worker-3',
+      leaseExpiresAt: new Date(now.getTime() + 60_000),
+      now,
+    })).resolves.toBeNull();
+  });
 });

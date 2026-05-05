@@ -9,6 +9,7 @@ describe('FakeRunner', () => {
 
     const result = await new FakeRunner().run({
       sessionId: 'session-1',
+      runId: 'run-1',
       messageId: 'message-1',
       prompt: 'hello',
       context: {},

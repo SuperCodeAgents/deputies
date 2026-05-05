@@ -4,6 +4,7 @@ export class FakeRunner implements Runner {
   async run(input: RunnerInput): Promise<RunnerResult> {
     await input.emit({
       sessionId: input.sessionId,
+      runId: input.runId,
       messageId: input.messageId,
       type: 'run_started',
       payload: { runner: 'fake' },
@@ -12,6 +13,7 @@ export class FakeRunner implements Runner {
 
     await input.emit({
       sessionId: input.sessionId,
+      runId: input.runId,
       messageId: input.messageId,
       type: 'agent_text_delta',
       payload: { text: `Fake response for: ${input.prompt}` },
@@ -20,6 +22,7 @@ export class FakeRunner implements Runner {
 
     await input.emit({
       sessionId: input.sessionId,
+      runId: input.runId,
       messageId: input.messageId,
       type: 'run_completed',
       payload: { runner: 'fake' },

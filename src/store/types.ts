@@ -2,6 +2,7 @@ import type { NormalizedEvent } from '../events/types.js';
 
 export type SessionStatus = 'created' | 'active' | 'idle' | 'completed' | 'failed' | 'cancelled' | 'archived';
 export type MessageStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export type RunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed_out' | 'stale';
 
 export type SessionRecord = {
   id: string;
@@ -20,6 +21,28 @@ export type MessageRecord = {
   createdAt: Date;
   source?: string;
   context?: Record<string, unknown>;
+};
+
+export type RunRecord = {
+  id: string;
+  sessionId: string;
+  messageId: string;
+  status: RunStatus;
+  runnerType: string;
+  leaseOwner?: string;
+  leaseExpiresAt?: Date;
+  heartbeatAt?: Date;
+  attempt: number;
+  startedAt: Date;
+  completedAt?: Date;
+  failedAt?: Date;
+  error?: string;
+  metadata: Record<string, unknown>;
+};
+
+export type ClaimedMessage = {
+  message: MessageRecord;
+  run: RunRecord;
 };
 
 export type CreateSessionRecord = {
@@ -49,6 +72,16 @@ export interface AppStore {
   nextMessageSequence(sessionId: string): Promise<number>;
   createMessage(record: CreateMessageRecord): Promise<MessageRecord>;
   getMessages(sessionId: string): Promise<MessageRecord[]>;
+
+  claimNextPendingMessage(input: {
+    runId: string;
+    runnerType: string;
+    leaseOwner: string;
+    leaseExpiresAt: Date;
+    now: Date;
+  }): Promise<ClaimedMessage | null>;
+  completeRun(input: { runId: string; completedAt: Date }): Promise<ClaimedMessage>;
+  failRun(input: { runId: string; failedAt: Date; error: string }): Promise<ClaimedMessage>;
 
   nextEventSequence(sessionId: string): Promise<number>;
   appendEvent(event: NormalizedEvent & { sequence: number }): Promise<NormalizedEvent & { sequence: number }>;

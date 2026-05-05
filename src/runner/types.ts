@@ -3,6 +3,7 @@ import type { SandboxHandle } from '../sandbox/types.js';
 
 export type RunnerInput = {
   sessionId: string;
+  runId: string;
   messageId: string;
   prompt: string;
   context: Record<string, unknown>;

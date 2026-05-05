@@ -19,9 +19,9 @@ Still open from the early phases:
 - Architecture fitness tests.
 - `GET /sessions/:id/events/stream`.
 - Contract schemas for public API responses and events.
-- Worker loop, runs, leases, and fake-runner processing.
+- Stale lease recovery and lease heartbeat renewal.
 
-The next implementation phase should be the worker/runs/leases layer, because durable product persistence is now in place.
+The next implementation phase should finish worker hardening: stale lease recovery, lease heartbeat renewal, and app-level Postgres UAT.
 
 ## Phase 0: Repository And Agent Context
 
@@ -112,6 +112,8 @@ Acceptance criteria:
 - Concurrent workers do not process the same message twice.
 - Stale processing messages recover.
 - Failed runner marks message/run failed and emits failure event.
+
+Status: partially implemented. The worker can claim pending messages transactionally, enforce one active run per session, execute the fake runner, and mark success/failure terminal states. Stale lease recovery and heartbeat renewal remain open.
 
 ## Phase 4: Generic Webhook Integration
 
