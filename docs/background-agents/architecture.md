@@ -48,6 +48,14 @@ RUN_MODE=api       # API only, future split
 RUN_MODE=worker    # Worker only, future split
 ```
 
+Process lifecycle:
+
+- `SIGTERM` and `SIGINT` trigger graceful shutdown.
+- The HTTP server stops accepting new requests.
+- Worker polling stops and waits for any in-flight `processNext()` call to finish.
+- Postgres-backed stores are closed before process exit.
+- Shutdown has a bounded timeout so orchestrators such as Railway, ECS, and Kubernetes can terminate predictably.
+
 The code must behave correctly with multiple replicas even when deployed in `RUN_MODE=all`. Any code path that allocates durable work or processes work must use Postgres-backed concurrency controls from its first implementation. The current store already uses database-backed per-session sequence counters; run leases are introduced with the worker/runs phase.
 
 ## Flue Node Deployment Implications

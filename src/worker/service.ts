@@ -174,12 +174,34 @@ export class WorkerService {
   }
 }
 
-export function startWorkerLoop(worker: WorkerService, pollIntervalMs = 1_000): () => void {
-  const timer = setInterval(() => {
-    worker.processNext().catch((error: unknown) => {
-      console.error(error instanceof Error ? error.message : error);
-    });
-  }, pollIntervalMs);
+export type WorkerLoopHandle = {
+  stop(): Promise<void>;
+};
 
-  return () => clearInterval(timer);
+export function startWorkerLoop(worker: Pick<WorkerService, 'processNext'>, pollIntervalMs = 1_000): WorkerLoopHandle {
+  let stopped = false;
+  let inFlight: Promise<void> | null = null;
+
+  const poll = () => {
+    if (stopped || inFlight) return;
+    inFlight = worker.processNext()
+      .then(() => {})
+      .catch((error: unknown) => {
+      console.error(error instanceof Error ? error.message : error);
+      })
+      .finally(() => {
+        inFlight = null;
+      });
+  };
+
+  const timer = setInterval(poll, pollIntervalMs);
+  poll();
+
+  return {
+    async stop(): Promise<void> {
+      stopped = true;
+      clearInterval(timer);
+      await inFlight;
+    },
+  };
 }

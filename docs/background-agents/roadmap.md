@@ -26,6 +26,7 @@ Implemented so far:
 - Flue live event normalization for text deltas, tools, commands, and tasks.
 - Built-artifact E2E coverage for API auth, sandbox reuse, webhook auth separation, and real Daytona/Flue follow-up persistence.
 - Artifact persistence and generic HTTP completion callbacks.
+- Graceful shutdown for HTTP server, worker loop, and Postgres-backed resources.
 - Postgres integration test path.
 - App-level Postgres worker integration test.
 

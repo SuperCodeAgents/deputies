@@ -2,7 +2,7 @@ import { createServices } from '../../src/app/server.js';
 import { FakeRunner } from '../../src/runner/fake.js';
 import { FakeSandboxProvider } from '../../src/sandbox/fake.js';
 import { MemoryStore } from '../../src/store/memory.js';
-import { WorkerService } from '../../src/worker/service.js';
+import { startWorkerLoop, WorkerService } from '../../src/worker/service.js';
 
 describe('WorkerService', () => {
   it('processes one pending message with the fake runner', async () => {
@@ -68,4 +68,40 @@ describe('WorkerService', () => {
       `fake-${session.id}`,
     ]);
   });
+
+  it('stops the worker loop after in-flight processing completes', async () => {
+    let release!: () => void;
+    const inFlight = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+    const loop = startWorkerLoop(
+      {
+        async processNext() {
+          calls += 1;
+          await inFlight;
+          return false;
+        },
+      },
+      5,
+    );
+
+    await waitFor(() => calls === 1);
+    const stopped = loop.stop();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls).toBe(1);
+    release();
+    await stopped;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls).toBe(1);
+  });
 });
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error('Timed out waiting for condition');
+}

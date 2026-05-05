@@ -1,3 +1,4 @@
+import { AppLifecycle, installProcessShutdownHandlers, type CloseableResource } from './app/lifecycle.js';
 import { createServer, createServices } from './app/server.js';
 import { loadConfig, requireDatabaseUrl, requireDaytonaApiKey, requireFlueModel } from './config/index.js';
 import { FakeRunner } from './runner/fake.js';
@@ -15,9 +16,14 @@ import { startWorkerLoop, WorkerService } from './worker/service.js';
 const config = loadConfig(process.env);
 const store = config.appStore === 'postgres' ? new PostgresStore(requireDatabaseUrl(config)) : new MemoryStore();
 const services = createServices(store);
+const resources: CloseableResource[] = [];
+let server: ReturnType<typeof createServer> | undefined;
+let workerLoop: ReturnType<typeof startWorkerLoop> | undefined;
+
+if ('close' in store && typeof store.close === 'function') resources.push(store as CloseableResource);
 
 if (config.runMode === 'all' || config.runMode === 'api') {
-  const server = createServer(config, services);
+  server = createServer(config, services);
   server.listen(config.port, () => {
     console.log(`background-agent service listening on :${config.port} (${config.runMode})`);
   });
@@ -32,9 +38,17 @@ if (config.runMode === 'all' || config.runMode === 'worker') {
     sandboxProvider: createSandboxProvider(),
     leaseOwner: `worker-${process.pid}`,
   });
-  startWorkerLoop(worker);
+  workerLoop = startWorkerLoop(worker);
   console.log(`background-agent worker started (${config.runMode})`);
 }
+
+const lifecycleOptions = {
+  resources,
+  onError: (error: unknown) => console.error(error instanceof Error ? error.message : error),
+};
+if (server) Object.assign(lifecycleOptions, { server });
+if (workerLoop) Object.assign(lifecycleOptions, { workerLoop });
+installProcessShutdownHandlers(new AppLifecycle(lifecycleOptions));
 
 function createSandboxProvider(): SandboxProvider {
   if (config.sandboxProvider === 'fake') return new FakeSandboxProvider();
@@ -59,7 +73,9 @@ function createRunner(): Runner {
     model: requireFlueModel(config),
   };
   if (config.flueSessionStore === 'postgres') {
-    Object.assign(options, { sessionStore: new PostgresFlueSessionStore(requireDatabaseUrl(config)) });
+    const sessionStore = new PostgresFlueSessionStore(requireDatabaseUrl(config));
+    resources.push(sessionStore);
+    Object.assign(options, { sessionStore });
   }
 
   return new FlueRunner(new RealFlueAgentFactory(options));
