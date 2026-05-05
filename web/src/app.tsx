@@ -1,5 +1,5 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { Archive, ChevronDown, PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, RotateCcw } from 'lucide-react';
+import { Archive, ChevronDown, PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, RotateCcw, X } from 'lucide-react';
 import {
   ApiError,
   AgentEvent,
@@ -305,7 +305,7 @@ export function App() {
         ) : (
           <aside
             className={cn(
-              'fixed left-2 top-2 z-40 hidden h-[calc(100vh-1rem)] w-[min(22rem,calc(100vw-1rem))] rounded-lg border border-slate-800 bg-slate-950 p-3 shadow-2xl md:static md:z-auto md:block md:h-full md:w-auto md:rounded-none md:border-y-0 md:border-l-0 md:shadow-none',
+              'fixed left-2 top-2 z-40 hidden h-[calc(100vh-1rem)] min-h-0 w-[min(22rem,calc(100vw-1rem))] overflow-hidden rounded-lg border border-slate-800 bg-slate-950 p-3 shadow-2xl md:static md:z-auto md:block md:h-full md:w-auto md:rounded-none md:border-y-0 md:border-l-0 md:shadow-none',
               sidebarOpen && 'block',
             )}
           >
@@ -331,7 +331,7 @@ export function App() {
           </aside>
         )}
 
-        <section className="min-h-0 min-w-0 overflow-auto">
+        <section className="min-h-0 min-w-0 overflow-hidden">
           {isCreatingThread ? (
             <NewThreadPanel
               canCallApi={canCallApi}
@@ -341,7 +341,7 @@ export function App() {
               onSubmit={handleCreateThread}
             />
           ) : selectedSession ? (
-            <>
+            <section className="flex h-full min-h-0 flex-col">
               <ThreadHeader
                 editingTitle={editingTitle}
                 selectedSession={selectedSession}
@@ -352,10 +352,13 @@ export function App() {
                 onTitleDraftChange={setTitleDraft}
                 onUpdateTitle={handleUpdateTitle}
               />
-              <div className="grid min-h-[calc(100vh-4.5rem)] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_20rem]">
-                <section className="min-w-0 px-3 py-4 md:px-8 xl:px-20">
-                  <ChatPanel events={events} messages={messages} />
-                  <form className="mt-4" onSubmit={handleSendMessage}>
+              <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_20rem]">
+                <section className="flex min-h-0 min-w-0 flex-col px-3 pt-4 md:px-8 xl:px-20">
+                  <div className="min-h-0 flex-1 overflow-auto pb-4">
+                    <ChatPanel events={events} messages={messages} />
+                    <div ref={threadEndRef} />
+                  </div>
+                  <form className="shrink-0 bg-slate-950/95 py-3" onSubmit={handleSendMessage}>
                     <Card className="overflow-hidden border-slate-700 bg-slate-900/70">
                       <Textarea
                         className="min-h-28 border-0 bg-transparent focus:ring-0"
@@ -370,11 +373,10 @@ export function App() {
                       </div>
                     </Card>
                   </form>
-                  <div ref={threadEndRef} />
                 </section>
                 <Artifacts artifacts={artifacts} />
               </div>
-            </>
+            </section>
           ) : (
             <section className="grid min-h-screen place-items-center px-4">
               <Card className="max-w-lg p-6 text-center">
@@ -411,7 +413,7 @@ function ThreadSidebar(props: {
 }) {
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-3 flex shrink-0 items-center gap-2">
         <Button className="shrink-0" variant="ghost" size="icon" onClick={props.onCollapse} aria-label="Hide sidebar" title="Hide sidebar"><PanelLeftClose className="h-4 w-4" /></Button>
         <h2 className="min-w-0 flex-1 text-sm font-semibold">Sessions</h2>
         <div className="flex shrink-0 gap-2">
@@ -419,7 +421,14 @@ function ThreadSidebar(props: {
           <Button variant="secondary" size="icon" onClick={props.onRefresh} disabled={!props.canCallApi || props.loading} aria-label="Refresh"><RefreshCw className="h-4 w-4" /></Button>
         </div>
       </div>
-      <Input className="mb-3" value={props.search} onChange={(event) => props.onSearch(event.target.value)} placeholder="Search sessions..." />
+      <div className="relative mb-3 shrink-0">
+        <Input className="pr-9" value={props.search} onChange={(event) => props.onSearch(event.target.value)} placeholder="Search sessions..." />
+        {props.search ? (
+          <Button className="absolute right-1 top-1 h-8 w-8 p-0" variant="ghost" size="icon" onClick={() => props.onSearch('')} aria-label="Clear search" title="Clear search">
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        ) : null}
+      </div>
       <div className="min-h-0 min-w-0 flex-1 overflow-auto">
         <div className="grid min-w-0 gap-1">
           {props.activeSessions.map((session) => (
@@ -443,7 +452,7 @@ function ThreadSidebar(props: {
 
 function ApiStatusFooter(props: { authRequired: boolean; health: Health | null; token: string; onSignOut: () => void }) {
   return (
-    <div className="mt-3 border-t border-slate-800 pt-3 text-left text-xs text-slate-500">
+    <div className="mt-3 shrink-0 border-t border-slate-800 pt-3 text-left text-xs text-slate-500">
       <div className="flex items-center gap-2">
         <span className={cn('h-2 w-2 rounded-full', props.health?.status === 'ok' ? 'bg-emerald-400' : 'bg-orange-400')} />
         <strong className="text-slate-300">{props.health ? `API ${props.health.status}` : 'Checking API'}</strong>
@@ -540,7 +549,7 @@ function ThreadHeader(props: {
       </div>
       <div className="flex shrink-0 items-center gap-2 justify-self-end">
         <Badge>{props.selectedSession.status}</Badge>
-        {props.selectedSession.status !== 'archived' ? <Button type="button" variant="secondary" onClick={props.onArchive}>Archive</Button> : null}
+        {props.selectedSession.status !== 'archived' ? <Button type="button" variant="secondary" onClick={props.onArchive}><Archive className="h-4 w-4" /> Archive</Button> : null}
       </div>
     </section>
   );
@@ -593,7 +602,7 @@ function Diagnostics(props: { events: AgentEvent[] }) {
 
 function Artifacts(props: { artifacts: Artifact[] }) {
   return (
-    <aside className="border-t border-slate-800 bg-slate-950/40 p-4 lg:border-l lg:border-t-0">
+    <aside className="min-h-0 overflow-auto border-t border-slate-800 bg-slate-950/40 p-4 lg:border-l lg:border-t-0">
       <h2 className="text-sm font-semibold">Context</h2>
       <div className="mt-3 border-b border-slate-800 pb-3 text-sm text-slate-400">
         <strong className="block font-medium text-slate-200">Artifacts</strong>

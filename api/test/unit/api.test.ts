@@ -54,6 +54,19 @@ describe('core API', () => {
     expectSessionResponse(await validAuth.json());
   });
 
+  it('allows PATCH session title updates through CORS preflight', async () => {
+    const response = await fetch(`${baseUrl}/sessions/00000000-0000-4000-8000-000000000001`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'http://localhost:5173',
+        'access-control-request-method': 'PATCH',
+      },
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('access-control-allow-methods')).toContain('PATCH');
+  });
+
   it('creates a session, enqueues a message, and replays events', async () => {
     const createSession = await postJson(`${baseUrl}/sessions`, { title: 'Test session' });
     expect(createSession.status).toBe(201);
