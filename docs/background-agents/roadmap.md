@@ -20,6 +20,7 @@ Implemented so far:
 - Daytona SDK dependency, sandbox provider adapter, and Flue `SandboxFactory` bridge.
 - Real Flue agent factory wiring behind `RUNNER=flue`.
 - Sandbox lifecycle persistence with active sandbox reconnect/reuse.
+- Opt-in real Daytona/Flue built-artifact UAT scaffold.
 - Postgres integration test path.
 - App-level Postgres worker integration test.
 
@@ -27,7 +28,7 @@ Still open from the early phases:
 
 - Contract schemas for public API responses and events.
 
-The next implementation phase should add real Daytona/Flue UAT coverage with credentials, then normalize actual Flue live events into product events.
+The next implementation phase should run the real Daytona/Flue UAT with credentials and harden any provider/runtime issues it exposes, then normalize actual Flue live events into product events.
 
 ## Phase 0: Repository And Agent Context
 

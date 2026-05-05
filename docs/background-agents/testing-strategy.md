@@ -76,6 +76,7 @@ Current local policy:
 - `pnpm test` runs deterministic unit tests from `test/unit` without Postgres.
 - `pnpm test:integration` runs Postgres-backed integration tests and requires `TEST_DATABASE_URL`.
 - `pnpm test:uat` runs built-artifact UAT tests from `test/uat` and requires `TEST_DATABASE_URL` plus a prior `pnpm build`.
+- Real Daytona/Flue UAT is opt-in: set `RUN_REAL_DAYTONA_FLUE_UAT=true`, `DAYTONA_API_KEY`, `FLUE_MODEL`, and the model provider credentials required by that model before running `pnpm test:uat`.
 - `docker compose up -d postgres` starts local Postgres and creates both `flue` and `flue_test`.
 - Integration tests apply migrations to `flue_test` and truncate app tables between tests.
 - Testcontainers is deferred until we need fully hermetic per-run databases.
@@ -203,6 +204,8 @@ Acceptance tests:
 
 - Health endpoint returns ready state.
 - Generic webhook returns `202` and creates session/message.
+- Built fake-runner flow completes through the worker and emits sandbox lifecycle events.
+- Opt-in real Daytona/Flue flow provisions a hosted sandbox, runs through `RUNNER=flue`, and completes a message.
 - Invalid auth returns stable JSON error.
 - Duplicate delivery does not create duplicate messages.
 - Event stream emits user-visible events.

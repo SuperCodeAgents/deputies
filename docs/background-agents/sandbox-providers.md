@@ -304,6 +304,7 @@ Current implementation:
 - This follows Flue's documented connector shape: product code creates/configures the Daytona sandbox, then Flue receives a connector-wrapped sandbox.
 - Provider sandbox IDs, workspace paths, metadata, health timestamps, and lifecycle status are persisted in `sandboxes`.
 - Follow-up messages reconnect to the latest active sandbox for the session/provider when health is ready; unhealthy or missing sandboxes are marked unhealthy and replaced.
+- `test/uat/real-daytona-flue.test.ts` provides an opt-in built-artifact UAT path for `RUNNER=flue` plus `SANDBOX_PROVIDER=daytona`; it is skipped unless `RUN_REAL_DAYTONA_FLUE_UAT=true` and required credentials are present.
 
 ### Kubernetes Provider
 
