@@ -348,6 +348,7 @@ Current implementation:
 
 - `008_artifacts_callbacks.sql` creates `artifacts` and `callback_deliveries`.
 - Runner-returned artifacts are persisted after successful runs and emitted as `artifact_created` events.
+- Session artifacts are readable through `GET /sessions/:sessionId/artifacts`.
 - Generic webhook HTTP callbacks are recorded in `callback_deliveries` with `pending`, `sent`, or `failed` status.
 
 ## Flue Sessions

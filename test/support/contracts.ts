@@ -50,6 +50,23 @@ export function expectEventsResponse(value: unknown): asserts value is { events:
   for (const event of events) expectNormalizedEvent(event);
 }
 
+export function expectArtifactsResponse(value: unknown): asserts value is { artifacts: Array<{ id: string; type: string; payload: Record<string, unknown> }> } {
+  expect(isRecord(value)).toBe(true);
+  const artifacts = isRecord(value) ? value.artifacts : undefined;
+  expect(Array.isArray(artifacts)).toBe(true);
+  if (!Array.isArray(artifacts)) return;
+  for (const artifact of artifacts) {
+    expect(isRecord(artifact)).toBe(true);
+    if (!isRecord(artifact)) continue;
+    expect(typeof artifact.id).toBe('string');
+    expect(typeof artifact.sessionId).toBe('string');
+    expect(typeof artifact.type).toBe('string');
+    expect(typeof artifact.createdAt).toBe('string');
+    expect(isRecord(artifact.payload)).toBe(true);
+    if (artifact.url !== undefined) expect(typeof artifact.url).toBe('string');
+  }
+}
+
 export function expectGenericWebhookResponse(
   value: unknown,
 ): asserts value is { accepted: boolean; duplicate: boolean; session?: { id: string }; message?: { id: string; prompt: string } } {

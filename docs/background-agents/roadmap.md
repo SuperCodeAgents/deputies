@@ -26,6 +26,7 @@ Implemented so far:
 - Flue live event normalization for text deltas, tools, commands, and tasks.
 - Built-artifact E2E coverage for API auth, sandbox reuse, webhook auth separation, and real Daytona/Flue follow-up persistence.
 - Artifact persistence and generic HTTP completion callbacks.
+- Session artifact read API.
 - Graceful shutdown for HTTP server, worker loop, and Postgres-backed resources.
 - Postgres integration test path.
 - App-level Postgres worker integration test.
@@ -34,7 +35,7 @@ Still open from the early phases:
 
 - Contract schemas for public API responses and events.
 
-The next implementation phase should run the real Daytona/Flue UAT with credentials and harden any provider/runtime issues it exposes, then add artifacts and outbound callback delivery.
+The next implementation phase should focus on deployability: release/migration commands, environment documentation, and Railway/ECS/Kubernetes operational guidance.
 
 ## Phase 0: Repository And Agent Context
 

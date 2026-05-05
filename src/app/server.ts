@@ -115,6 +115,15 @@ export function createApp(config: AppConfig, services = createServices()) {
     return c.json({ events });
   });
 
+  app.get('/sessions/:sessionId/artifacts', async (c) => {
+    const sessionId = c.req.param('sessionId');
+    const session = await services.sessions.get(sessionId);
+    if (!session) return writeError(c, 404, 'not_found', 'Session not found');
+
+    const artifacts = await services.store.getArtifacts(sessionId);
+    return c.json({ artifacts });
+  });
+
   app.get('/sessions/:sessionId/events/stream', async (c) => {
     const sessionId = c.req.param('sessionId');
     const session = await services.sessions.get(sessionId);

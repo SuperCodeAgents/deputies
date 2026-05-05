@@ -1,14 +1,17 @@
 import type { Server } from 'node:http';
-import { createServer } from '../../src/app/server.js';
+import { createServer, createServices } from '../../src/app/server.js';
 import { loadConfig } from '../../src/config/index.js';
-import { expectErrorResponse, expectEventsResponse, expectMessageResponse, expectSessionResponse } from '../support/contracts.js';
+import { MemoryStore } from '../../src/store/memory.js';
+import { expectArtifactsResponse, expectErrorResponse, expectEventsResponse, expectMessageResponse, expectSessionResponse } from '../support/contracts.js';
 
 describe('core API', () => {
   let server: Server;
   let baseUrl: string;
+  let store: MemoryStore;
 
   beforeEach(async () => {
-    server = createServer(loadConfig({}));
+    store = new MemoryStore();
+    server = createServer(loadConfig({}), createServices(store));
     baseUrl = await listen(server);
   });
 
@@ -122,6 +125,43 @@ describe('core API', () => {
     const body = await response.json();
     expectErrorResponse(body);
     expect(body).toMatchObject({ error: 'invalid_request' });
+  });
+
+  it('lists artifacts for a session', async () => {
+    const createSession = await postJson(`${baseUrl}/sessions`, { title: 'Artifacts' });
+    const { session } = (await createSession.json()) as { session: { id: string } };
+    await store.createArtifact({
+      id: '00000000-0000-4000-8000-000000000901',
+      sessionId: session.id,
+      type: 'external_link',
+      url: 'https://example.com/result',
+      payload: { ok: true },
+      createdAt: new Date(),
+    });
+
+    const response = await fetch(`${baseUrl}/sessions/${session.id}/artifacts`);
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expectArtifactsResponse(body);
+    expect(body.artifacts).toMatchObject([{ type: 'external_link', url: 'https://example.com/result' }]);
+  });
+
+  it('protects artifact reads when bearer auth is enabled', async () => {
+    await closeServer(server);
+    server = createServer(loadConfig({ API_AUTH_MODE: 'bearer', API_BEARER_TOKEN: 'secret' }));
+    baseUrl = await listen(server);
+    const createSession = await postJson(`${baseUrl}/sessions`, { title: 'Private artifacts' }, 'secret');
+    const { session } = (await createSession.json()) as { session: { id: string } };
+
+    const missingAuth = await fetch(`${baseUrl}/sessions/${session.id}/artifacts`);
+    expect(missingAuth.status).toBe(401);
+
+    const validAuth = await fetch(`${baseUrl}/sessions/${session.id}/artifacts`, {
+      headers: { authorization: 'Bearer secret' },
+    });
+    expect(validAuth.status).toBe(200);
+    expectArtifactsResponse(await validAuth.json());
   });
 
   it('returns stable errors for invalid JSON bodies', async () => {

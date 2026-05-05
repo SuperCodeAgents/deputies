@@ -192,6 +192,12 @@ describe.skipIf(!testDatabaseUrl)('built server UAT', () => {
       const events = await waitForEvents(session.id, ['callback_sent']);
       expect(events.map((event) => event.type)).toContain('artifact_created');
       expect(events.map((event) => event.type)).toContain('callback_sent');
+      const artifactsResponse = await fetch(`http://127.0.0.1:${uatPort}/sessions/${session.id}/artifacts`);
+      expect(artifactsResponse.status).toBe(200);
+      const artifactsBody = (await artifactsResponse.json()) as { artifacts: Array<{ type: string; url?: string }> };
+      expect(artifactsBody.artifacts).toMatchObject([
+        { type: 'external_link', url: 'https://example.com/result' },
+      ]);
       await waitFor(() => Promise.resolve(callbacks.length === 1));
       expect(callbacks[0]).toMatchObject({ event: 'message_completed', sessionId: session.id });
       expect((callbacks[0] as { artifacts: unknown[] }).artifacts).toHaveLength(1);
