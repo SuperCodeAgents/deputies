@@ -1,5 +1,5 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { Archive, ChevronDown, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, RotateCcw } from 'lucide-react';
+import { Archive, ChevronDown, PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, RotateCcw } from 'lucide-react';
 import {
   ApiError,
   AgentEvent,
@@ -286,60 +286,50 @@ export function App() {
 
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
-      <header className="z-30 grid min-h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-slate-800 bg-slate-950/95 px-4 py-3 backdrop-blur md:px-5">
-        <div className="min-w-0 pr-2">
-          <div className="flex items-center gap-2">
-            {sidebarCollapsed ? (
-              <Button variant="secondary" size="sm" onClick={toggleSidebar} aria-label="Open sessions">
-                <PanelLeftOpen className="h-4 w-4" />
-                <span className="hidden sm:inline">Sessions</span>
-              </Button>
-            ) : null}
-            <p className="hidden text-xs font-semibold uppercase tracking-widest text-sky-300 sm:block">DevOps Deputies</p>
-          </div>
-          <h1 className="mt-1 truncate text-sm font-semibold text-slate-50 sm:text-base">Your async engineering deputies.</h1>
-          <p className="hidden truncate text-xs text-slate-400 md:block">Delegate follow-ups, watch the work trail, and inspect the results.</p>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-3 justify-self-end">
-          <span className={cn('h-2.5 w-2.5 rounded-full', health?.status === 'ok' ? 'bg-emerald-400' : 'bg-orange-400')} />
-          <div className="hidden max-w-[32rem] text-sm md:block">
-            <strong className="block text-slate-100">{health ? `API ${health.status}` : 'Checking API'}</strong>
-            <span className="block truncate text-slate-400">{getApiBaseUrl()}</span>
-            {health ? <span className="ml-2 text-slate-500">{health.runMode} mode · auth {health.apiAuthMode}</span> : null}
-          </div>
-          {authRequired && token ? <Button variant="secondary" onClick={signOut}>Clear token</Button> : null}
-        </div>
-      </header>
-
       {authRequired && !token ? <AuthPanel draftToken={draftToken} setDraftToken={setDraftToken} saveToken={saveToken} /> : null}
       {error ? <div className="border-b border-red-900/60 bg-red-950/40 px-4 py-2 text-sm text-red-200">{error}</div> : null}
 
-      <section className={cn('grid min-h-0 flex-1 grid-cols-[18rem_minmax(0,1fr)]', sidebarCollapsed && 'grid-cols-1')}>
-        {!sidebarCollapsed ? (
+      {!sidebarCollapsed && !sidebarOpen ? (
+        <Button className="fixed left-3 top-3 z-30 h-9 w-9 p-0 shadow-xl md:hidden" variant="secondary" size="icon" onClick={() => setSidebarOpen(true)} aria-label="Open sessions" title="Open sessions">
+          <PanelLeftOpen className="h-4 w-4" />
+        </Button>
+      ) : null}
+
+      <section className={cn('grid min-h-0 flex-1', sidebarCollapsed ? 'grid-cols-[3.75rem_minmax(0,1fr)]' : 'grid-cols-1 md:grid-cols-[18rem_minmax(0,1fr)]')}>
+        {sidebarCollapsed ? (
+          <aside className="flex min-h-0 border-r border-slate-800 bg-slate-950/95 p-3">
+            <Button className="h-9 w-9 p-0 text-slate-400 hover:text-slate-100" variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Open sessions" title="Open sessions">
+              <PanelLeftOpen className="h-4 w-4" />
+            </Button>
+          </aside>
+        ) : (
           <aside
             className={cn(
-              'fixed left-2 top-[4.5rem] z-20 hidden h-[calc(100vh-5rem)] w-[min(22rem,calc(100vw-1rem))] rounded-lg border border-slate-800 bg-slate-950 p-3 shadow-2xl md:static md:block md:h-full md:w-auto md:rounded-none md:border-y-0 md:border-l-0 md:shadow-none',
+              'fixed left-2 top-2 z-40 hidden h-[calc(100vh-1rem)] w-[min(22rem,calc(100vw-1rem))] rounded-lg border border-slate-800 bg-slate-950 p-3 shadow-2xl md:static md:z-auto md:block md:h-full md:w-auto md:rounded-none md:border-y-0 md:border-l-0 md:shadow-none',
               sidebarOpen && 'block',
             )}
           >
             <ThreadSidebar
               activeSessions={activeSessions}
               archivedSessions={archivedSessions}
+              authRequired={authRequired}
               canCallApi={canCallApi}
+              health={health}
               loading={loading}
               search={threadSearch}
               selectedSessionId={selectedSessionId}
+              token={token}
               onArchive={archiveFromList}
               onCollapse={toggleSidebar}
               onNewThread={startNewThread}
               onRefresh={refreshSessions}
               onSearch={setThreadSearch}
               onSelect={selectSession}
+              onSignOut={signOut}
               onUnarchive={unarchiveFromList}
             />
           </aside>
-        ) : null}
+        )}
 
         <section className="min-h-0 min-w-0 overflow-auto">
           {isCreatingThread ? (
@@ -362,7 +352,7 @@ export function App() {
                 onTitleDraftChange={setTitleDraft}
                 onUpdateTitle={handleUpdateTitle}
               />
-              <div className="grid min-h-[calc(100vh-8.5rem)] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_20rem]">
+              <div className="grid min-h-[calc(100vh-4.5rem)] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_20rem]">
                 <section className="min-w-0 px-3 py-4 md:px-8 xl:px-20">
                   <ChatPanel events={events} messages={messages} />
                   <form className="mt-4" onSubmit={handleSendMessage}>
@@ -386,7 +376,7 @@ export function App() {
               </div>
             </>
           ) : (
-            <section className="grid min-h-[calc(100vh-4rem)] place-items-center px-4">
+            <section className="grid min-h-screen place-items-center px-4">
               <Card className="max-w-lg p-6 text-center">
                 <h2 className="text-lg font-semibold">Select a session or start a new one</h2>
                 <p className="mt-2 text-sm text-slate-400">The work trail will stream once a session is active.</p>
@@ -403,24 +393,28 @@ export function App() {
 function ThreadSidebar(props: {
   activeSessions: Session[];
   archivedSessions: Session[];
+  authRequired: boolean;
   canCallApi: boolean;
+  health: Health | null;
   loading: boolean;
   search: string;
   selectedSessionId: string;
+  token: string;
   onArchive: (sessionId: string) => void;
   onCollapse: () => void;
   onNewThread: () => void;
   onRefresh: () => void;
   onSearch: (value: string) => void;
   onSelect: (sessionId: string) => void;
+  onSignOut: () => void;
   onUnarchive: (sessionId: string) => void;
 }) {
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">Sessions</h2>
+      <div className="mb-3 flex items-center gap-2">
+        <Button className="shrink-0" variant="ghost" size="icon" onClick={props.onCollapse} aria-label="Hide sidebar" title="Hide sidebar"><PanelLeftClose className="h-4 w-4" /></Button>
+        <h2 className="min-w-0 flex-1 text-sm font-semibold">Sessions</h2>
         <div className="flex shrink-0 gap-2">
-          <Button variant="ghost" size="icon" onClick={props.onCollapse} aria-label="Hide sidebar" title="Hide sidebar"><PanelLeftClose className="h-4 w-4" /></Button>
           <Button size="icon" onClick={props.onNewThread} disabled={!props.canCallApi} aria-label="New session"><Plus className="h-4 w-4" /></Button>
           <Button variant="secondary" size="icon" onClick={props.onRefresh} disabled={!props.canCallApi || props.loading} aria-label="Refresh"><RefreshCw className="h-4 w-4" /></Button>
         </div>
@@ -442,6 +436,21 @@ function ThreadSidebar(props: {
           </details>
         ) : null}
       </div>
+      <ApiStatusFooter authRequired={props.authRequired} health={props.health} token={props.token} onSignOut={props.onSignOut} />
+    </div>
+  );
+}
+
+function ApiStatusFooter(props: { authRequired: boolean; health: Health | null; token: string; onSignOut: () => void }) {
+  return (
+    <div className="mt-3 border-t border-slate-800 pt-3 text-left text-xs text-slate-500">
+      <div className="flex items-center gap-2">
+        <span className={cn('h-2 w-2 rounded-full', props.health?.status === 'ok' ? 'bg-emerald-400' : 'bg-orange-400')} />
+        <strong className="text-slate-300">{props.health ? `API ${props.health.status}` : 'Checking API'}</strong>
+      </div>
+      <p className="mt-1 truncate">{getApiBaseUrl()}</p>
+      {props.health ? <p>{props.health.runMode} mode · auth {props.health.apiAuthMode}</p> : null}
+      {props.authRequired && props.token ? <Button className="mt-2" variant="secondary" size="sm" onClick={props.onSignOut}>Clear token</Button> : null}
     </div>
   );
 }
@@ -486,10 +495,12 @@ function NewThreadPanel(props: {
   onSubmit: (event: FormEvent) => void;
 }) {
   return (
-    <section className="grid min-h-[calc(100vh-4rem)] place-items-center px-4">
+    <section className="grid min-h-screen place-items-center px-4">
       <Card className="w-full max-w-2xl p-5">
-        <p className="text-xs font-semibold uppercase tracking-widest text-sky-300">New Session</p>
-        <h2 className="mt-2 text-2xl font-semibold">What should your deputy do?</h2>
+        <p className="text-xs font-semibold uppercase tracking-widest text-sky-300">DevOps Deputies</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50">Your async engineering deputies.</h1>
+        <p className="mt-2 text-sm text-slate-400">Delegate follow-ups, watch the work trail, and inspect the results.</p>
+        <h2 className="mt-6 text-xl font-semibold">What should your deputy do?</h2>
         <form className="mt-4 grid gap-3" onSubmit={props.onSubmit}>
           <Textarea className="min-h-40" value={props.prompt} onChange={(event) => props.onPromptChange(event.target.value)} onKeyDown={(event) => submitOnModifierEnter(event)} placeholder="Ask your deputy to investigate, change code, or answer a question..." disabled={!props.canCallApi} autoFocus />
           <Button className="justify-self-end" type="submit" disabled={!props.canCallApi || props.loading || !props.prompt.trim()}>Start session</Button>
@@ -520,9 +531,9 @@ function ThreadHeader(props: {
             <Button type="button" variant="secondary" onClick={props.onCancelTitle}>Cancel</Button>
           </form>
         ) : (
-          <div className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+          <div className="mt-1 flex min-w-0 items-center gap-1">
             <h2 className="min-w-0 truncate text-base font-semibold text-slate-50">{props.selectedSession.title || 'Untitled session'}</h2>
-            <Button className="shrink-0" type="button" variant="secondary" size="sm" onClick={props.onEditTitle}>Edit title</Button>
+            <Button className="h-7 w-7 shrink-0 p-0" type="button" variant="ghost" size="icon" onClick={props.onEditTitle} aria-label="Edit title" title="Edit title"><Pencil className="h-3.5 w-3.5" /></Button>
           </div>
         )}
         <p className="mt-1 hidden truncate text-xs text-slate-500 sm:block">{props.selectedSession.id}</p>
