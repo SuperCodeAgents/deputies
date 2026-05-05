@@ -1,6 +1,10 @@
 import { createServer, createServices } from './app/server.js';
 import { loadConfig, requireDatabaseUrl, requireDaytonaApiKey, requireFlueModel } from './config/index.js';
 import { FakeRunner } from './runner/fake.js';
+import type { Runner } from './runner/types.js';
+import { RealFlueAgentFactory } from './runner-flue/agent-factory.js';
+import { FlueRunner } from './runner-flue/runner.js';
+import { PostgresFlueSessionStore } from './runner-flue/session-store.js';
 import { DaytonaSandboxProvider } from './sandbox/daytona.js';
 import { FakeSandboxProvider } from './sandbox/fake.js';
 import type { SandboxProvider } from './sandbox/types.js';
@@ -20,16 +24,10 @@ if (config.runMode === 'all' || config.runMode === 'api') {
 }
 
 if (config.runMode === 'all' || config.runMode === 'worker') {
-  if (config.runner !== 'fake') {
-    requireDatabaseUrl(config);
-    requireFlueModel(config);
-    throw new Error('RUNNER=flue is configured but the Flue agent factory is not wired yet');
-  }
-
   const worker = new WorkerService({
     store,
     events: services.events,
-    runner: new FakeRunner(),
+    runner: createRunner(),
     runnerType: config.runner,
     sandboxProvider: createSandboxProvider(),
     leaseOwner: `worker-${process.pid}`,
@@ -52,4 +50,17 @@ function createSandboxProvider(): SandboxProvider {
   }
 
   throw new Error(`SANDBOX_PROVIDER=${config.sandboxProvider} is not wired yet`);
+}
+
+function createRunner(): Runner {
+  if (config.runner === 'fake') return new FakeRunner();
+
+  const options = {
+    model: requireFlueModel(config),
+  };
+  if (config.flueSessionStore === 'postgres') {
+    Object.assign(options, { sessionStore: new PostgresFlueSessionStore(requireDatabaseUrl(config)) });
+  }
+
+  return new FlueRunner(new RealFlueAgentFactory(options));
 }

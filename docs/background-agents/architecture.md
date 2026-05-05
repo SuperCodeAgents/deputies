@@ -85,6 +85,8 @@ The implementation should still align with Flue's Node deployment model:
 - use Flue sandbox connectors for remote environments;
 - treat Flue live events as input to our product event log.
 
+The embedded runner uses Flue the same way the generated Node server does: construct a `createFlueContext()` in the worker process, then call `init()`. The difference is that our `init()` receives a product-managed provider sandbox via a Flue `SandboxFactory`, plus the Postgres-backed Flue `SessionStore`, instead of relying on the generated server's default in-memory store.
+
 If we later expose raw Flue agent endpoints, they should be clearly separated from product session endpoints:
 
 ```txt

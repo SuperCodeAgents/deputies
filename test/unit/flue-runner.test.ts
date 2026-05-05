@@ -5,7 +5,7 @@ import { FakeSandboxProvider } from '../../src/sandbox/fake.js';
 
 describe('FlueRunner', () => {
   it('uses stable product session IDs for Flue agent and session identity', async () => {
-    const calls: Array<{ agentId: string; sessionId: string; cwd?: string }> = [];
+    const calls: Parameters<FlueAgentFactory['create']>[0][] = [];
     const factory: FlueAgentFactory = {
       async create(input) {
         calls.push(input);
@@ -36,7 +36,7 @@ describe('FlueRunner', () => {
       },
     });
 
-    expect(calls).toEqual([{ agentId: 'session-1', sessionId: 'session-1', cwd: '/workspace' }]);
+    expect(calls).toEqual([{ agentId: 'session-1', sessionId: 'session-1', sandbox, cwd: '/workspace' }]);
     expect(result.text).toBe('flue: hello');
     expect(events.map((event) => event.type)).toEqual(['run_started', 'agent_text_delta', 'run_completed']);
   });

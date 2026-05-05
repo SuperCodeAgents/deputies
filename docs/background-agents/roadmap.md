@@ -18,6 +18,7 @@ Implemented so far:
 - Architecture fitness tests for core import boundaries.
 - Postgres-backed Flue `SessionStore` and `runner-flue` adapter seam.
 - Daytona SDK dependency, sandbox provider adapter, and Flue `SandboxFactory` bridge.
+- Real Flue agent factory wiring behind `RUNNER=flue`.
 - Postgres integration test path.
 - App-level Postgres worker integration test.
 
@@ -25,7 +26,7 @@ Still open from the early phases:
 
 - Contract schemas for public API responses and events.
 
-The next implementation phase should wire real Flue context/agent construction behind `runner-flue`, then add sandbox lifecycle persistence and real Daytona UAT coverage.
+The next implementation phase should add sandbox lifecycle persistence, then real Daytona/Flue UAT coverage with credentials.
 
 ## Phase 0: Repository And Agent Context
 
@@ -167,7 +168,7 @@ Acceptance criteria:
 - Real Flue runner uses Flue commands/tools/session APIs rather than a parallel harness.
 - Flue text/tool/task events are persisted as normalized events.
 
-Status: partially implemented. The Postgres-backed Flue `SessionStore` exists and is integration-tested. A `FlueRunner` adapter seam exists and is unit-tested with a fake Flue agent factory. A `SandboxHandle` to Flue `SandboxFactory` bridge exists for provider-backed sandboxes. Real Flue context/agent factory wiring, event normalization from actual Flue events, and controlled sandbox execution remain open.
+Status: partially implemented. The Postgres-backed Flue `SessionStore` exists and is integration-tested. A `FlueRunner` adapter seam exists and is unit-tested with a fake Flue agent factory. A real Flue agent factory now creates in-process Flue contexts, passes provider-backed `SandboxFactory` instances, and uses durable Flue session persistence when configured. Event normalization from actual Flue live events and credential-backed controlled sandbox execution remain open.
 
 ## Phase 6: Sandbox Provider
 

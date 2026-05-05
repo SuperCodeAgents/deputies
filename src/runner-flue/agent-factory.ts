@@ -1,0 +1,54 @@
+import { createFlueContext, InMemorySessionStore, resolveModel } from '@flue/sdk/internal';
+import type { AgentInit, SessionStore } from '@flue/sdk';
+import type { FlueAgentFactory, FlueAgentPort } from './types.js';
+import { sandboxHandleToFlueFactory } from './sandbox-factory.js';
+
+export type RealFlueAgentFactoryOptions = {
+  model: AgentInit['model'];
+  sessionStore?: SessionStore;
+  env?: Record<string, unknown>;
+};
+
+export class RealFlueAgentFactory implements FlueAgentFactory {
+  private readonly sessionStore: SessionStore;
+  private readonly env: Record<string, unknown>;
+
+  constructor(private readonly options: RealFlueAgentFactoryOptions) {
+    this.sessionStore = options.sessionStore ?? new InMemorySessionStore();
+    this.env = options.env ?? process.env;
+  }
+
+  async create(input: Parameters<FlueAgentFactory['create']>[0]): Promise<FlueAgentPort> {
+    const ctx = createFlueContext({
+      id: input.agentId,
+      payload: {},
+      env: this.env,
+      agentConfig: {
+        systemPrompt: '',
+        skills: {},
+        roles: {},
+        model: undefined,
+        resolveModel,
+      },
+      createDefaultEnv: unsupportedEnv('default'),
+      createLocalEnv: unsupportedEnv('local'),
+      defaultStore: this.sessionStore,
+    });
+
+    const initOptions: AgentInit = {
+      id: input.agentId,
+      sandbox: sandboxHandleToFlueFactory(input.sandbox),
+      model: this.options.model,
+      persist: this.sessionStore,
+    };
+    if (input.cwd) initOptions.cwd = input.cwd;
+
+    return ctx.init(initOptions);
+  }
+}
+
+function unsupportedEnv(kind: string) {
+  return async () => {
+    throw new Error(`Flue ${kind} sandbox is not available in the background worker`);
+  };
+}

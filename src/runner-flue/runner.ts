@@ -8,6 +8,7 @@ export class FlueRunner implements Runner {
     const agent = await this.agentFactory.create({
       agentId: input.sessionId,
       sessionId: input.sessionId,
+      sandbox: input.sandbox,
       cwd: input.sandbox.workspacePath,
     });
     const session = await agent.session(input.sessionId);

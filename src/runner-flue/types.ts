@@ -1,5 +1,6 @@
 import type { PromptResponse, SandboxFactory } from '@flue/sdk';
 import type { RunnerInput, RunnerResult } from '../runner/types.js';
+import type { SandboxHandle } from '../sandbox/types.js';
 
 export type FlueRunnerOptions = {
   model: string;
@@ -20,5 +21,5 @@ export interface FlueAgentPort {
 }
 
 export interface FlueAgentFactory {
-  create(input: { agentId: string; sessionId: string; cwd?: string }): Promise<FlueAgentPort>;
+  create(input: { agentId: string; sessionId: string; sandbox: SandboxHandle; cwd?: string }): Promise<FlueAgentPort>;
 }
