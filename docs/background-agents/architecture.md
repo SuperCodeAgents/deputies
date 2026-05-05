@@ -16,7 +16,7 @@ Cloud-specific primitives such as Durable Objects, D1, KV, or provider-native qu
 
 ```txt
 background-agent service
-  HTTP API
+  Hono HTTP API
   worker loop
   event streaming
   integration routes
@@ -103,6 +103,7 @@ Strong module boundaries are also an agent-development constraint, not only a so
 This has practical consequences:
 
 - HTTP routes should call services instead of embedding product logic.
+- Hono middleware should own transport-wide concerns like request IDs, auth, CORS, body limits, and error shaping.
 - Store implementations should hide SQL details behind narrow methods.
 - Integration modules should normalize external payloads before they reach session/message code.
 - Runner modules should own runner-specific protocol details and publish normalized events.
@@ -149,7 +150,7 @@ agent-constraints/
 
 | Module | Owns | Does Not Own |
 |---|---|---|
-| `api` | HTTP routes, request validation, auth boundaries, response formatting | Agent execution, sandbox lifecycle decisions |
+| `api`/`app` | Hono routes, request validation, auth boundaries, response formatting, middleware | Agent execution, sandbox lifecycle decisions |
 | `app` | Process bootstrap, run mode, graceful shutdown | Business logic |
 | `sessions` | Durable task workspace lifecycle and status | SQL details, Flue calls |
 | `messages` | Prompt/follow-up queue semantics | Running prompts |
@@ -190,6 +191,8 @@ sessions/messages -> integration-specific modules
 ```
 
 Only `runner-flue` should import `@flue/sdk`. This keeps Flue replaceable and makes tests easier. Provider SDKs should stay in provider-specific sandbox adapters, such as `src/sandbox/daytona.ts` for `@daytona/sdk`. Store implementations may import shared data types, but must not import session/message/event service classes.
+
+The HTTP transport uses Hono on Node via `@hono/node-server`. This keeps the API layer lightweight while giving us middleware hooks for auth, request IDs, CORS, body limits, and route grouping as integrations grow.
 
 `runner-flue` must also provide or configure a Postgres-backed Flue session store. Flue's Node default is in-memory and is not acceptable for production, CI, UAT, or multi-replica deployments. Product state and Flue runtime state are separate but both must be durable.
 

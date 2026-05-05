@@ -1,4 +1,8 @@
-import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { randomUUID } from 'node:crypto';
+import type { Server } from 'node:http';
+import { createAdaptorServer } from '@hono/node-server';
+import { Hono } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import type { AppConfig } from '../config/index.js';
 import { EventService } from '../events/service.js';
 import { GenericWebhookError, GenericWebhookService } from '../integrations/generic-webhook/service.js';
@@ -6,6 +10,10 @@ import { MessageService, MessageServiceError } from '../messages/service.js';
 import { SessionService } from '../sessions/service.js';
 import { MemoryStore } from '../store/memory.js';
 import type { AppStore } from '../store/types.js';
+
+type AppVariables = {
+  requestId: string;
+};
 
 export type AppServices = {
   store: AppStore;
@@ -28,187 +36,164 @@ export function createServices(store: AppStore = new MemoryStore()): AppServices
   };
 }
 
-export function createServer(config: AppConfig, services = createServices()) {
-  return createHttpServer((request, response) => {
-    handleRequest(request, response, config, services).catch((error: unknown) => {
-      writeError(response, 500, 'internal_error', error instanceof Error ? error.message : 'Unknown error');
-    });
+export function createApp(config: AppConfig, services = createServices()) {
+  const app = new Hono<{ Variables: AppVariables }>();
+
+  app.use('*', requestIdMiddleware());
+
+  app.onError((error, c) => {
+    return writeError(c, 500, 'internal_error', error instanceof Error ? error.message : 'Unknown error');
   });
-}
 
-async function handleRequest(
-  request: IncomingMessage,
-  response: ServerResponse,
-  config: AppConfig,
-  services: AppServices,
-) {
-  const url = new URL(request.url ?? '/', 'http://localhost');
+  app.notFound((c) => c.json({ error: 'not_found', message: 'Route not found' }, 404));
 
-  if (request.method === 'GET' && request.url === '/health') {
-    writeJson(response, 200, {
-      status: 'ok',
-      runMode: config.runMode,
-    });
-    return;
-  }
+  app.get('/health', (c) => c.json({ status: 'ok', runMode: config.runMode }));
 
-  if (request.method === 'POST' && url.pathname === '/sessions') {
-    const body = await readJsonBody(request);
+  app.post('/sessions', async (c) => {
+    const body = await readJsonBody(c);
     const title = optionalString(body.title);
     const session = await services.sessions.create(title ? { title } : {});
-    writeJson(response, 201, { session });
-    return;
-  }
+    return c.json({ session }, 201);
+  });
 
-  const genericWebhookMatch = url.pathname.match(/^\/webhooks\/generic\/([^/]+)$/);
-  if (request.method === 'POST' && genericWebhookMatch) {
-    const sourceKey = decodeURIComponent(genericWebhookMatch[1]!);
-    const body = await readJsonBody(request);
+  app.post('/webhooks/generic/:sourceKey', async (c) => {
+    const body = await readJsonBody(c);
 
     try {
       const result = await services.genericWebhooks.handle({
-        sourceKey,
-        authorization: request.headers.authorization,
+        sourceKey: c.req.param('sourceKey'),
+        authorization: c.req.header('authorization'),
         payload: body,
       });
-      writeJson(response, 202, result);
+      return c.json(result, 202);
     } catch (error) {
       if (error instanceof GenericWebhookError) {
         const status = error.code === 'unauthorized' ? 401 : error.code === 'not_found' ? 404 : 400;
-        writeError(response, status, error.code, error.message);
-        return;
+        return writeError(c, status, error.code, error.message);
       }
       throw error;
     }
-    return;
-  }
+  });
 
-  const sessionMatch = url.pathname.match(/^\/sessions\/([^/]+)$/);
-  if (request.method === 'GET' && sessionMatch) {
-    const session = await services.sessions.get(decodeURIComponent(sessionMatch[1]!));
-    if (!session) {
-      writeError(response, 404, 'not_found', 'Session not found');
-      return;
-    }
+  app.get('/sessions/:sessionId', async (c) => {
+    const session = await services.sessions.get(c.req.param('sessionId'));
+    if (!session) return writeError(c, 404, 'not_found', 'Session not found');
+    return c.json({ session });
+  });
 
-    writeJson(response, 200, { session });
-    return;
-  }
-
-  const messagesMatch = url.pathname.match(/^\/sessions\/([^/]+)\/messages$/);
-  if (request.method === 'POST' && messagesMatch) {
-    const sessionId = decodeURIComponent(messagesMatch[1]!);
-    const body = await readJsonBody(request);
+  app.post('/sessions/:sessionId/messages', async (c) => {
+    const sessionId = c.req.param('sessionId');
+    const body = await readJsonBody(c);
     const prompt = optionalString(body.prompt);
-    if (!prompt) {
-      writeError(response, 400, 'invalid_request', 'Expected non-empty string field: prompt');
-      return;
-    }
+    if (!prompt) return writeError(c, 400, 'invalid_request', 'Expected non-empty string field: prompt');
 
     try {
       const message = await services.messages.enqueue({ sessionId, prompt });
-      writeJson(response, 202, { message });
+      return c.json({ message }, 202);
     } catch (error) {
       if (error instanceof MessageServiceError && error.code === 'not_found') {
-        writeError(response, 404, 'not_found', 'Session not found');
-        return;
+        return writeError(c, 404, 'not_found', 'Session not found');
       }
       throw error;
     }
-    return;
-  }
-
-  const eventsMatch = url.pathname.match(/^\/sessions\/([^/]+)\/events$/);
-  if (request.method === 'GET' && eventsMatch) {
-    const sessionId = decodeURIComponent(eventsMatch[1]!);
-    const session = await services.sessions.get(sessionId);
-    if (!session) {
-      writeError(response, 404, 'not_found', 'Session not found');
-      return;
-    }
-
-    const after = parseCursor(url.searchParams.get('after'));
-    const events = await services.events.list(sessionId, after);
-    writeJson(response, 200, { events });
-    return;
-  }
-
-  const eventStreamMatch = url.pathname.match(/^\/sessions\/([^/]+)\/events\/stream$/);
-  if (request.method === 'GET' && eventStreamMatch) {
-    const sessionId = decodeURIComponent(eventStreamMatch[1]!);
-    const session = await services.sessions.get(sessionId);
-    if (!session) {
-      writeError(response, 404, 'not_found', 'Session not found');
-      return;
-    }
-
-    const after = parseCursor(url.searchParams.get('after')) ?? 0;
-    await writeEventStream(request, response, services, sessionId, after);
-    return;
-  }
-
-  writeJson(response, 404, {
-    error: 'not_found',
-    message: 'Route not found',
   });
+
+  app.get('/sessions/:sessionId/events', async (c) => {
+    const sessionId = c.req.param('sessionId');
+    const session = await services.sessions.get(sessionId);
+    if (!session) return writeError(c, 404, 'not_found', 'Session not found');
+
+    const after = parseCursor(c.req.query('after') ?? null);
+    const events = await services.events.list(sessionId, after);
+    return c.json({ events });
+  });
+
+  app.get('/sessions/:sessionId/events/stream', async (c) => {
+    const sessionId = c.req.param('sessionId');
+    const session = await services.sessions.get(sessionId);
+    if (!session) return writeError(c, 404, 'not_found', 'Session not found');
+
+    const after = parseCursor(c.req.query('after') ?? null) ?? 0;
+    return writeEventStream(c, services, sessionId, after);
+  });
+
+  return app;
 }
 
-function writeJson(response: ServerResponse, statusCode: number, body: unknown) {
-  response.writeHead(statusCode, { 'content-type': 'application/json' });
-  response.end(JSON.stringify(body));
+export function createServer(config: AppConfig, services = createServices()) {
+  return createAdaptorServer({ fetch: createApp(config, services).fetch }) as Server;
 }
 
-function writeError(response: ServerResponse, statusCode: number, error: string, message: string) {
-  writeJson(response, statusCode, { error, message });
+function requestIdMiddleware(): MiddlewareHandler<{ Variables: AppVariables }> {
+  return async (c, next) => {
+    c.set('requestId', c.req.header('x-request-id') ?? randomUUID());
+    await next();
+  };
+}
+
+function writeError(c: Context, statusCode: number, error: string, message: string) {
+  return c.json({ error, message }, statusCode as never);
 }
 
 async function writeEventStream(
-  request: IncomingMessage,
-  response: ServerResponse,
+  c: Context,
   services: AppServices,
   sessionId: string,
   afterSequence: number,
-): Promise<void> {
-  response.writeHead(200, {
-    'content-type': 'text/event-stream',
-    'cache-control': 'no-cache, no-transform',
-    connection: 'keep-alive',
-  });
-  response.write(': connected\n\n');
-
+): Promise<Response> {
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  const encoder = new TextEncoder();
   let cursor = afterSequence;
+
+  const write = async (chunk: string) => {
+    await writer.write(encoder.encode(chunk));
+  };
   const writeEvent = (event: Awaited<ReturnType<EventService['list']>>[number]) => {
     if (event.sequence <= cursor) return;
     cursor = event.sequence;
-    response.write(`id: ${event.sequence}\n`);
-    response.write(`event: ${event.type}\n`);
-    response.write(`data: ${JSON.stringify(event)}\n\n`);
+    write(`id: ${event.sequence}\n`)
+      .then(() => write(`event: ${event.type}\n`))
+      .then(() => write(`data: ${JSON.stringify(event)}\n\n`))
+      .catch(() => {});
   };
-
-  for (const event of await services.events.list(sessionId, afterSequence)) {
-    writeEvent(event);
-  }
 
   const unsubscribe = services.events.subscribe(sessionId, writeEvent);
   const heartbeat = setInterval(() => {
-    response.write(': keep-alive\n\n');
+    write(': keep-alive\n\n').catch(() => {});
   }, 15_000);
 
-  request.on('close', () => {
+  c.req.raw.signal.addEventListener('abort', () => {
     clearInterval(heartbeat);
     unsubscribe();
+    writer.close().catch(() => {});
+  });
+
+  void (async () => {
+    try {
+      await write(': connected\n\n');
+      for (const event of await services.events.list(sessionId, afterSequence)) {
+        writeEvent(event);
+      }
+    } catch {
+      clearInterval(heartbeat);
+      unsubscribe();
+      await writer.close().catch(() => {});
+    }
+  })();
+
+  return new Response(readable, {
+    status: 200,
+    headers: {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+    },
   });
 }
 
-async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-
-  if (chunks.length === 0) return {};
-
-  const text = Buffer.concat(chunks).toString('utf8').trim();
+async function readJsonBody(c: Context): Promise<Record<string, unknown>> {
+  const text = (await c.req.text()).trim();
   if (!text) return {};
 
   const value: unknown = JSON.parse(text);
