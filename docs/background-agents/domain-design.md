@@ -75,11 +75,11 @@ Invariants:
 Modules:
 
 ```txt
-src/sessions
-src/messages
-src/runs
-src/events
-src/artifacts
+api/src/sessions
+api/src/messages
+api/src/runs
+api/src/events
+api/src/artifacts
 ```
 
 ### Sandbox Context
@@ -103,7 +103,7 @@ Invariants:
 Modules:
 
 ```txt
-src/sandbox
+api/src/sandbox
 ```
 
 ### Runner Context
@@ -128,8 +128,8 @@ Invariants:
 Modules:
 
 ```txt
-src/runner
-src/runner-flue
+api/src/runner
+api/src/runner-flue
 ```
 
 ### Integration Context
@@ -153,8 +153,8 @@ Invariants:
 Modules:
 
 ```txt
-src/integrations
-src/prompts
+api/src/integrations
+api/src/prompts
 ```
 
 ### Persistence Context
@@ -178,7 +178,7 @@ Invariants:
 Modules:
 
 ```txt
-src/store
+api/src/store
 ```
 
 ## Aggregate Boundaries
@@ -240,15 +240,15 @@ Do not let external payload shapes leak into core session/message/run services.
 The current code already follows this direction:
 
 ```txt
-src/sessions/service.ts     # session domain operations
-src/messages/service.ts     # message queue operations
-src/events/service.ts       # append/replay events
-src/store/types.ts          # persistence port
-src/store/memory.ts         # deterministic test/local adapter
-src/store/postgres.ts       # durable product state adapter
-src/db/migrations           # SQL migrations
-src/runner/types.ts         # runner port
-src/sandbox/types.ts        # sandbox provider port
+api/src/sessions/service.ts     # session domain operations
+api/src/messages/service.ts     # message queue operations
+api/src/events/service.ts       # append/replay events
+api/src/store/types.ts          # persistence port
+api/src/store/memory.ts         # deterministic test/local adapter
+api/src/store/postgres.ts       # durable product state adapter
+api/src/db/migrations           # SQL migrations
+api/src/runner/types.ts         # runner port
+api/src/sandbox/types.ts        # sandbox provider port
 ```
 
 This is intentionally not full DDD ceremony. It is enough structure to keep agents from collapsing the design into route handlers plus SQL.

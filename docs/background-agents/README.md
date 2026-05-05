@@ -78,6 +78,7 @@ The current scaffold has implemented the portable control-plane foundation:
 - Daytona SDK dependency, provider lifecycle adapter, and Flue `SandboxFactory` bridge.
 - Real Flue agent factory wiring behind `RUNNER=flue` using provider-backed sandbox handles.
 - Sandbox lifecycle persistence with reconnect/reuse semantics for follow-up messages.
+- Daytona sandbox auto-stop configuration and stopped-sandbox restart/reuse.
 - Flue live event normalization for text deltas, tools, commands, and tasks.
 - Artifact persistence, session artifact reads, and generic HTTP completion callbacks.
 - Separate Vite React operator UI scaffold.

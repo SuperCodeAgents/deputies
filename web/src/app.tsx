@@ -1,4 +1,5 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { Archive, ChevronDown, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, RotateCcw } from 'lucide-react';
 import {
   ApiError,
   AgentEvent,
@@ -19,6 +20,12 @@ import {
   updateSession,
   type Health,
 } from './api.js';
+import { Badge } from './components/ui/badge.js';
+import { Button } from './components/ui/button.js';
+import { Card } from './components/ui/card.js';
+import { Input } from './components/ui/input.js';
+import { Textarea } from './components/ui/textarea.js';
+import { cn } from './lib/utils.js';
 
 const tokenStorageKey = 'devops-deputies-api-token';
 
@@ -27,6 +34,8 @@ export function App() {
   const [token, setToken] = useState(() => localStorage.getItem(tokenStorageKey) ?? '');
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [events, setEvents] = useState<AgentEvent[]>([]);
@@ -36,6 +45,7 @@ export function App() {
   const [titleDraft, setTitleDraft] = useState('');
   const [prompt, setPrompt] = useState('');
   const [draftToken, setDraftToken] = useState(token);
+  const [threadSearch, setThreadSearch] = useState('');
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const eventCursor = useRef(0);
@@ -44,8 +54,9 @@ export function App() {
   const authRequired = health?.apiAuthMode === 'bearer';
   const canCallApi = Boolean(health) && (!authRequired || Boolean(token));
   const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null;
-  const activeSessions = sessions.filter((session) => session.status !== 'archived');
-  const archivedSessions = sessions.filter((session) => session.status === 'archived');
+  const filteredSessions = filterSessions(sortSessionsByLastActivity(sessions), threadSearch);
+  const activeSessions = filteredSessions.filter((session) => session.status !== 'archived');
+  const archivedSessions = filteredSessions.filter((session) => session.status === 'archived');
 
   useEffect(() => {
     setTitleDraft(selectedSession?.title ?? '');
@@ -216,6 +227,7 @@ export function App() {
   }
 
   function startNewThread() {
+    setSidebarCollapsed(false);
     setSelectedSessionId('');
     setIsCreatingThread(true);
     setMessages([]);
@@ -228,6 +240,12 @@ export function App() {
   function selectSession(sessionId: string) {
     setSelectedSessionId(sessionId);
     setIsCreatingThread(false);
+    setSidebarOpen(false);
+  }
+
+  function toggleSidebar() {
+    setSidebarOpen((open) => !open);
+    setSidebarCollapsed((collapsed) => !collapsed);
   }
 
   function applyArchivedSession(session: Session) {
@@ -267,119 +285,100 @@ export function App() {
   }
 
   return (
-    <main className="shell">
-      <header className="hero">
-        <div>
-          <p className="eyebrow">DevOps Deputies</p>
-          <h1>Your async engineering deputies.</h1>
-          <p className="lede">Start a thread, delegate follow-ups, watch the work trail, and inspect the results.</p>
-        </div>
-        <div className="status-card">
-          <span className={health?.status === 'ok' ? 'dot ok' : 'dot'} />
-          <div>
-            <strong>{health ? `API ${health.status}` : 'Checking API'}</strong>
-            <span>{getApiBaseUrl()}</span>
-            {health ? <span>{health.runMode} mode · auth {health.apiAuthMode}</span> : null}
+    <main className="flex h-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
+      <header className="z-30 grid min-h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-slate-800 bg-slate-950/95 px-4 py-3 backdrop-blur md:px-5">
+        <div className="min-w-0 pr-2">
+          <div className="flex items-center gap-2">
+            {sidebarCollapsed ? (
+              <Button variant="secondary" size="sm" onClick={toggleSidebar} aria-label="Open sessions">
+                <PanelLeftOpen className="h-4 w-4" />
+                <span className="hidden sm:inline">Sessions</span>
+              </Button>
+            ) : null}
+            <p className="hidden text-xs font-semibold uppercase tracking-widest text-sky-300 sm:block">DevOps Deputies</p>
           </div>
-          {authRequired && token ? <button className="clear-token" type="button" onClick={signOut}>Clear token</button> : null}
+          <h1 className="mt-1 truncate text-sm font-semibold text-slate-50 sm:text-base">Your async engineering deputies.</h1>
+          <p className="hidden truncate text-xs text-slate-400 md:block">Delegate follow-ups, watch the work trail, and inspect the results.</p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3 justify-self-end">
+          <span className={cn('h-2.5 w-2.5 rounded-full', health?.status === 'ok' ? 'bg-emerald-400' : 'bg-orange-400')} />
+          <div className="hidden max-w-[32rem] text-sm md:block">
+            <strong className="block text-slate-100">{health ? `API ${health.status}` : 'Checking API'}</strong>
+            <span className="block truncate text-slate-400">{getApiBaseUrl()}</span>
+            {health ? <span className="ml-2 text-slate-500">{health.runMode} mode · auth {health.apiAuthMode}</span> : null}
+          </div>
+          {authRequired && token ? <Button variant="secondary" onClick={signOut}>Clear token</Button> : null}
         </div>
       </header>
 
       {authRequired && !token ? <AuthPanel draftToken={draftToken} setDraftToken={setDraftToken} saveToken={saveToken} /> : null}
-      {error ? <div className="error">{error}</div> : null}
+      {error ? <div className="border-b border-red-900/60 bg-red-950/40 px-4 py-2 text-sm text-red-200">{error}</div> : null}
 
-      <section className="layout">
-        <aside className="panel sessions-panel">
-          <div className="panel-heading">
-            <h2>Sessions</h2>
-            <div className="session-actions">
-              <button className="icon-button" type="button" onClick={startNewThread} disabled={!canCallApi} aria-label="New thread">+</button>
-              <button type="button" onClick={refreshSessions} disabled={!canCallApi || loading}>Refresh</button>
-            </div>
-          </div>
-          <div className="session-list">
-            {activeSessions.map((session) => (
-              <SessionButton
-                key={session.id}
-                session={session}
-                selected={session.id === selectedSessionId}
-                onArchive={archiveFromList}
-                onSelect={selectSession}
-              />
-            ))}
-            {!activeSessions.length ? <p className="empty">No active sessions.</p> : null}
-          </div>
-          {archivedSessions.length ? (
-            <details className="archived-nav">
-              <summary>Archived · {archivedSessions.length}</summary>
-              <div className="session-list archived-list">
-                {archivedSessions.map((session) => (
-                  <SessionButton
-                    key={session.id}
-                    session={session}
-                    selected={session.id === selectedSessionId}
-                    onSelect={selectSession}
-                    onUnarchive={unarchiveFromList}
-                  />
-                ))}
-              </div>
-            </details>
-          ) : null}
-        </aside>
+      <section className={cn('grid min-h-0 flex-1 grid-cols-[18rem_minmax(0,1fr)]', sidebarCollapsed && 'grid-cols-1')}>
+        {!sidebarCollapsed ? (
+          <aside
+            className={cn(
+              'fixed left-2 top-[4.5rem] z-20 hidden h-[calc(100vh-5rem)] w-[min(22rem,calc(100vw-1rem))] rounded-lg border border-slate-800 bg-slate-950 p-3 shadow-2xl md:static md:block md:h-full md:w-auto md:rounded-none md:border-y-0 md:border-l-0 md:shadow-none',
+              sidebarOpen && 'block',
+            )}
+          >
+            <ThreadSidebar
+              activeSessions={activeSessions}
+              archivedSessions={archivedSessions}
+              canCallApi={canCallApi}
+              loading={loading}
+              search={threadSearch}
+              selectedSessionId={selectedSessionId}
+              onArchive={archiveFromList}
+              onCollapse={toggleSidebar}
+              onNewThread={startNewThread}
+              onRefresh={refreshSessions}
+              onSearch={setThreadSearch}
+              onSelect={selectSession}
+              onUnarchive={unarchiveFromList}
+            />
+          </aside>
+        ) : null}
 
-        <section className="workspace">
+        <section className="min-h-0 min-w-0 overflow-auto">
           {isCreatingThread ? (
-            <section className="panel new-thread-state">
-              <p className="eyebrow">New Thread</p>
-              <h2>What should your deputy do?</h2>
-              <form className="new-thread" onSubmit={handleCreateThread}>
-                <textarea
-                  value={newThreadPrompt}
-                  onChange={(event) => setNewThreadPrompt(event.target.value)}
-                  onKeyDown={(event) => submitOnModifierEnter(event)}
-                  placeholder="Ask your deputy to investigate, change code, or answer a question..."
-                  disabled={!canCallApi}
-                  autoFocus
-                />
-                <button type="submit" disabled={!canCallApi || loading || !newThreadPrompt.trim()}>Start thread</button>
-              </form>
-            </section>
+            <NewThreadPanel
+              canCallApi={canCallApi}
+              loading={loading}
+              prompt={newThreadPrompt}
+              onPromptChange={setNewThreadPrompt}
+              onSubmit={handleCreateThread}
+            />
           ) : selectedSession ? (
             <>
-              <section className="panel detail-header">
-                <div>
-                  <p className="eyebrow">Selected Session</p>
-                  {editingTitle ? (
-                    <form className="title-editor" onSubmit={handleUpdateTitle}>
-                      <input value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} autoFocus />
-                      <button type="submit" disabled={!titleDraft.trim()}>Save</button>
-                      <button type="button" className="subtle-button" onClick={() => setEditingTitle(false)}>Cancel</button>
-                    </form>
-                  ) : (
-                    <div className="title-row">
-                      <h2>{selectedSession.title || 'Untitled session'}</h2>
-                      <button type="button" className="subtle-button" onClick={() => setEditingTitle(true)}>Edit title</button>
-                    </div>
-                  )}
-                  <p>{selectedSession.id}</p>
-                </div>
-                <div className="detail-actions">
-                  <span className="badge">{selectedSession.status}</span>
-                  {selectedSession.status !== 'archived' ? <button type="button" className="subtle-button" onClick={handleArchiveSession}>Archive</button> : null}
-                </div>
-              </section>
-
-              <div className="columns">
-                <section className="thread-column">
+              <ThreadHeader
+                editingTitle={editingTitle}
+                selectedSession={selectedSession}
+                titleDraft={titleDraft}
+                onArchive={handleArchiveSession}
+                onCancelTitle={() => setEditingTitle(false)}
+                onEditTitle={() => setEditingTitle(true)}
+                onTitleDraftChange={setTitleDraft}
+                onUpdateTitle={handleUpdateTitle}
+              />
+              <div className="grid min-h-[calc(100vh-8.5rem)] grid-cols-1 lg:grid-cols-[minmax(0,1fr)_20rem]">
+                <section className="min-w-0 px-3 py-4 md:px-8 xl:px-20">
                   <ChatPanel events={events} messages={messages} />
-                  <form className="panel composer" onSubmit={handleSendMessage}>
-                    <textarea
-                      value={prompt}
-                      onChange={(event) => setPrompt(event.target.value)}
-                      onKeyDown={(event) => submitOnModifierEnter(event)}
-                      placeholder="Ask your deputy to investigate, change code, or follow up..."
-                    />
-                    <button type="submit" disabled={!prompt.trim()}>Send message</button>
+                  <form className="mt-4" onSubmit={handleSendMessage}>
+                    <Card className="overflow-hidden border-slate-700 bg-slate-900/70">
+                      <Textarea
+                        className="min-h-28 border-0 bg-transparent focus:ring-0"
+                        value={prompt}
+                        onChange={(event) => setPrompt(event.target.value)}
+                        onKeyDown={(event) => submitOnModifierEnter(event)}
+                        placeholder="Ask your deputy to investigate, change code, or follow up..."
+                      />
+                      <div className="flex items-center justify-between border-t border-slate-800 px-3 py-2 text-xs text-slate-500">
+                        <span>Ctrl/⌘ Enter to send</span>
+                        <Button type="submit" disabled={!prompt.trim()}>Send message</Button>
+                      </div>
+                    </Card>
                   </form>
                   <div ref={threadEndRef} />
                 </section>
@@ -387,15 +386,63 @@ export function App() {
               </div>
             </>
           ) : (
-            <section className="panel empty-state">
-              <h2>Select a session or start a new thread</h2>
-              <p>The work trail will stream once a thread is active.</p>
-              <button type="button" onClick={startNewThread} disabled={!canCallApi}>+ New thread</button>
+            <section className="grid min-h-[calc(100vh-4rem)] place-items-center px-4">
+              <Card className="max-w-lg p-6 text-center">
+                <h2 className="text-lg font-semibold">Select a session or start a new one</h2>
+                <p className="mt-2 text-sm text-slate-400">The work trail will stream once a session is active.</p>
+                <Button className="mt-4" onClick={startNewThread} disabled={!canCallApi}><Plus className="h-4 w-4" /> New session</Button>
+              </Card>
             </section>
           )}
         </section>
       </section>
     </main>
+  );
+}
+
+function ThreadSidebar(props: {
+  activeSessions: Session[];
+  archivedSessions: Session[];
+  canCallApi: boolean;
+  loading: boolean;
+  search: string;
+  selectedSessionId: string;
+  onArchive: (sessionId: string) => void;
+  onCollapse: () => void;
+  onNewThread: () => void;
+  onRefresh: () => void;
+  onSearch: (value: string) => void;
+  onSelect: (sessionId: string) => void;
+  onUnarchive: (sessionId: string) => void;
+}) {
+  return (
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold">Sessions</h2>
+        <div className="flex shrink-0 gap-2">
+          <Button variant="ghost" size="icon" onClick={props.onCollapse} aria-label="Hide sidebar" title="Hide sidebar"><PanelLeftClose className="h-4 w-4" /></Button>
+          <Button size="icon" onClick={props.onNewThread} disabled={!props.canCallApi} aria-label="New session"><Plus className="h-4 w-4" /></Button>
+          <Button variant="secondary" size="icon" onClick={props.onRefresh} disabled={!props.canCallApi || props.loading} aria-label="Refresh"><RefreshCw className="h-4 w-4" /></Button>
+        </div>
+      </div>
+      <Input className="mb-3" value={props.search} onChange={(event) => props.onSearch(event.target.value)} placeholder="Search sessions..." />
+      <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+        <div className="grid min-w-0 gap-1">
+          {props.activeSessions.map((session) => (
+            <SessionButton key={session.id} session={session} selected={session.id === props.selectedSessionId} onArchive={props.onArchive} onSelect={props.onSelect} />
+          ))}
+          {!props.activeSessions.length ? <p className="px-2 py-3 text-sm text-slate-500">{props.search ? 'No matching active sessions.' : 'No active sessions.'}</p> : null}
+        </div>
+        {props.archivedSessions.length ? (
+          <details className="mt-4 border-t border-slate-800 pt-3">
+            <summary className="flex cursor-pointer items-center gap-1 text-sm font-medium text-slate-400"><ChevronDown className="h-4 w-4" /> Archived · {props.archivedSessions.length}</summary>
+            <div className="mt-2 grid min-w-0 gap-1 opacity-80">
+              {props.archivedSessions.map((session) => <SessionButton key={session.id} session={session} selected={session.id === props.selectedSessionId} onSelect={props.onSelect} onUnarchive={props.onUnarchive} />)}
+            </div>
+          </details>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -407,89 +454,152 @@ function SessionButton(props: {
   onUnarchive?: (sessionId: string) => void;
 }) {
   return (
-    <div className={props.selected ? 'session selected' : 'session'}>
-      <button className="session-main" type="button" onClick={() => props.onSelect(props.session.id)}>
-        <strong>{props.session.title || 'Untitled session'}</strong>
-        <span>{props.session.status} · {formatDate(props.session.updatedAt)}</span>
+    <div className={cn('group flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md border border-transparent p-2 hover:bg-slate-900', props.selected && 'border-sky-400 bg-sky-950/30')}>
+      <button className="block min-w-0 flex-1 overflow-hidden bg-transparent p-0 text-left" type="button" onClick={() => props.onSelect(props.session.id)}>
+        <strong className="block w-full truncate text-sm font-medium text-slate-100">{props.session.title || 'Untitled session'}</strong>
+        <span className="block w-full truncate text-xs text-slate-500">{props.session.status} · {formatDate(props.session.updatedAt)}</span>
       </button>
-      {props.onArchive ? (
-        <button className="session-archive" type="button" onClick={() => props.onArchive?.(props.session.id)} aria-label={`Archive ${props.session.title || 'session'}`}>
-          Archive
-        </button>
-      ) : null}
-      {props.onUnarchive ? (
-        <button className="session-archive" type="button" onClick={() => props.onUnarchive?.(props.session.id)} aria-label={`Unarchive ${props.session.title || 'session'}`}>
-          Restore
-        </button>
-      ) : null}
+      {props.onArchive ? <Button className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100" variant="ghost" size="sm" onClick={() => props.onArchive?.(props.session.id)} aria-label="Archive session" title="Archive session"><Archive className="h-3.5 w-3.5" /></Button> : null}
+      {props.onUnarchive ? <Button className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100" variant="ghost" size="sm" onClick={() => props.onUnarchive?.(props.session.id)} aria-label="Restore session" title="Restore session"><RotateCcw className="h-3.5 w-3.5" /></Button> : null}
     </div>
   );
 }
 
 function AuthPanel(props: { draftToken: string; setDraftToken: (value: string) => void; saveToken: (event: FormEvent) => void }) {
   return (
-    <form className="auth-panel" onSubmit={props.saveToken}>
+    <form className="grid gap-3 border-b border-slate-800 bg-slate-900/80 p-4 md:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)_auto] md:items-center" onSubmit={props.saveToken}>
       <div>
         <strong>API token required</strong>
-        <p>Enter the backend bearer token. It stays in this browser's local storage.</p>
+        <p className="text-sm text-slate-400">Enter the backend bearer token. It stays in this browser's local storage.</p>
       </div>
-      <input type="password" value={props.draftToken} onChange={(event) => props.setDraftToken(event.target.value)} placeholder="Bearer token" />
-      <button type="submit">Use token</button>
+      <Input type="password" value={props.draftToken} onChange={(event) => props.setDraftToken(event.target.value)} placeholder="Bearer token" />
+      <Button type="submit">Use token</Button>
     </form>
+  );
+}
+
+function NewThreadPanel(props: {
+  canCallApi: boolean;
+  loading: boolean;
+  prompt: string;
+  onPromptChange: (value: string) => void;
+  onSubmit: (event: FormEvent) => void;
+}) {
+  return (
+    <section className="grid min-h-[calc(100vh-4rem)] place-items-center px-4">
+      <Card className="w-full max-w-2xl p-5">
+        <p className="text-xs font-semibold uppercase tracking-widest text-sky-300">New Session</p>
+        <h2 className="mt-2 text-2xl font-semibold">What should your deputy do?</h2>
+        <form className="mt-4 grid gap-3" onSubmit={props.onSubmit}>
+          <Textarea className="min-h-40" value={props.prompt} onChange={(event) => props.onPromptChange(event.target.value)} onKeyDown={(event) => submitOnModifierEnter(event)} placeholder="Ask your deputy to investigate, change code, or answer a question..." disabled={!props.canCallApi} autoFocus />
+          <Button className="justify-self-end" type="submit" disabled={!props.canCallApi || props.loading || !props.prompt.trim()}>Start session</Button>
+        </form>
+      </Card>
+    </section>
+  );
+}
+
+function ThreadHeader(props: {
+  editingTitle: boolean;
+  selectedSession: Session;
+  titleDraft: string;
+  onArchive: () => void;
+  onCancelTitle: () => void;
+  onEditTitle: () => void;
+  onTitleDraftChange: (value: string) => void;
+  onUpdateTitle: (event: FormEvent) => void;
+}) {
+  return (
+    <section className="sticky top-0 z-20 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-b border-slate-800 bg-slate-950/95 px-4 py-3 backdrop-blur">
+      <div className="min-w-0 overflow-hidden">
+        <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Session</p>
+        {props.editingTitle ? (
+          <form className="mt-1 flex flex-wrap items-center gap-2" onSubmit={props.onUpdateTitle}>
+            <Input className="max-w-xl" value={props.titleDraft} onChange={(event) => props.onTitleDraftChange(event.target.value)} autoFocus />
+            <Button type="submit" disabled={!props.titleDraft.trim()}>Save</Button>
+            <Button type="button" variant="secondary" onClick={props.onCancelTitle}>Cancel</Button>
+          </form>
+        ) : (
+          <div className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+            <h2 className="min-w-0 truncate text-base font-semibold text-slate-50">{props.selectedSession.title || 'Untitled session'}</h2>
+            <Button className="shrink-0" type="button" variant="secondary" size="sm" onClick={props.onEditTitle}>Edit title</Button>
+          </div>
+        )}
+        <p className="mt-1 hidden truncate text-xs text-slate-500 sm:block">{props.selectedSession.id}</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2 justify-self-end">
+        <Badge>{props.selectedSession.status}</Badge>
+        {props.selectedSession.status !== 'archived' ? <Button type="button" variant="secondary" onClick={props.onArchive}>Archive</Button> : null}
+      </div>
+    </section>
   );
 }
 
 function ChatPanel(props: { events: AgentEvent[]; messages: Message[] }) {
   const assistantText = buildAssistantText(props.events);
+  const diagnostics = groupDiagnosticsByMessage(props.events);
 
   return (
-    <section className="panel chat-panel">
-      <div className="panel-heading"><h2>Chat</h2></div>
+    <section className="grid gap-3">
       {props.messages.map((message) => (
-        <div className="turn" key={message.id}>
-          <article className="bubble user-bubble">
-            <h3>Message {message.sequence} <span>{message.status}</span></h3>
-            <p>{message.prompt}</p>
-          </article>
+        <div className="grid gap-2" key={message.id}>
+          <Card className="border-sky-500/70 bg-sky-950/30 p-3">
+            <h3 className="mb-1 text-xs font-medium text-slate-400">Message {message.sequence} <Badge>{message.status}</Badge></h3>
+            <p className="whitespace-pre-wrap text-sm leading-6 text-slate-100">{message.prompt}</p>
+          </Card>
           {assistantText[message.id] ? (
-            <article className="bubble assistant-bubble">
-              <h3>Deputy response</h3>
-              <p>{assistantText[message.id]}</p>
-            </article>
+            <Card className="p-3">
+              <h3 className="mb-1 text-xs font-medium text-slate-400">Deputy response</h3>
+              <p className="whitespace-pre-wrap text-sm leading-6 text-slate-100">{assistantText[message.id]}</p>
+            </Card>
           ) : null}
+          <Diagnostics events={diagnostics[message.id] ?? []} />
         </div>
       ))}
-      {!props.messages.length ? <p className="empty">No messages yet.</p> : null}
-      <details className="timeline-details">
-        <summary>Diagnostics timeline · {props.events.length} events</summary>
-        <div className="timeline-events">
-          {props.events.map((event) => (
-            <article className="event" key={`${event.sessionId}-${event.sequence}`}>
-              <span>#{event.sequence} · {formatDate(event.createdAt)}</span>
-              <strong>{event.type}</strong>
-              <pre>{JSON.stringify(event.payload, null, 2)}</pre>
-            </article>
-          ))}
-        </div>
-      </details>
+      {!props.messages.length ? <p className="text-sm text-slate-500">No messages yet.</p> : null}
     </section>
+  );
+}
+
+function Diagnostics(props: { events: AgentEvent[] }) {
+  if (!props.events.length) return null;
+
+  return (
+    <details className="rounded-md border border-slate-800 bg-slate-950/30 p-2">
+      <summary className="cursor-pointer text-sm text-slate-400">Diagnostics · {props.events.length} events</summary>
+      <div className="mt-2 grid gap-2">
+        {props.events.map((event) => (
+          <article className="rounded-md border border-slate-800 bg-slate-950/60 p-2" key={`${event.sessionId}-${event.sequence}`}>
+            <span className="text-xs text-slate-500">#{event.sequence} · {formatDate(event.createdAt)}</span>
+            <strong className="mt-1 block text-sm font-medium text-slate-200">{event.type}</strong>
+            <pre className="mt-2 max-h-44 overflow-auto rounded bg-slate-950 p-2 text-xs text-slate-300">{JSON.stringify(event.payload, null, 2)}</pre>
+          </article>
+        ))}
+      </div>
+    </details>
   );
 }
 
 function Artifacts(props: { artifacts: Artifact[] }) {
   return (
-    <section className="panel artifacts">
-      <div className="panel-heading"><h2>Artifacts</h2></div>
-      {props.artifacts.map((artifact) => (
-        <article className="artifact" key={artifact.id}>
-          <span>{artifact.type} · {formatDate(artifact.createdAt)}</span>
-          <strong>{artifact.title || artifact.url || artifact.id}</strong>
-          {artifact.url ? <a href={artifact.url} target="_blank" rel="noreferrer">Open artifact</a> : null}
-          <pre>{JSON.stringify(artifact.payload, null, 2)}</pre>
-        </article>
-      ))}
-      {!props.artifacts.length ? <p className="empty">No artifacts yet.</p> : null}
-    </section>
+    <aside className="border-t border-slate-800 bg-slate-950/40 p-4 lg:border-l lg:border-t-0">
+      <h2 className="text-sm font-semibold">Context</h2>
+      <div className="mt-3 border-b border-slate-800 pb-3 text-sm text-slate-400">
+        <strong className="block font-medium text-slate-200">Artifacts</strong>
+        <span>Outputs and links created by the deputy appear here.</span>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {props.artifacts.map((artifact) => (
+          <Card className="p-3" key={artifact.id}>
+            <span className="text-xs text-slate-500">{artifact.type} · {formatDate(artifact.createdAt)}</span>
+            <strong className="mt-1 block text-sm font-medium">{artifact.title || artifact.url || artifact.id}</strong>
+            {artifact.url ? <a className="mt-1 block text-sm text-sky-300" href={artifact.url} target="_blank" rel="noreferrer">Open artifact</a> : null}
+            <pre className="mt-2 max-h-44 overflow-auto rounded bg-slate-950 p-2 text-xs text-slate-300">{JSON.stringify(artifact.payload, null, 2)}</pre>
+          </Card>
+        ))}
+        {!props.artifacts.length ? <p className="text-sm text-slate-500">No artifacts yet.</p> : null}
+      </div>
+    </aside>
   );
 }
 
@@ -527,10 +637,64 @@ function buildAssistantText(events: AgentEvent[]): Record<string, string> {
   return outputByMessageId;
 }
 
+function groupDiagnosticsByMessage(events: AgentEvent[]): Record<string, AgentEvent[]> {
+  const messageIdsBySequence: Record<number, string> = {};
+  const grouped: Record<string, AgentEvent[]> = {};
+  let currentMessageId = '';
+  let currentSequence = 0;
+
+  for (const event of events) {
+    const maybeSequence = event.payload.sequence;
+    if (typeof maybeSequence === 'number') {
+      currentSequence = maybeSequence;
+      if (event.messageId) messageIdsBySequence[maybeSequence] = event.messageId;
+    }
+    if (event.messageId) currentMessageId = event.messageId;
+
+    const messageId = event.messageId || currentMessageId || messageIdsBySequence[currentSequence];
+    if (!messageId || event.type === 'message_created' || event.type === 'agent_text_delta') continue;
+    grouped[messageId] = [...(grouped[messageId] ?? []), event];
+  }
+
+  return grouped;
+}
+
 function titleFromPrompt(prompt: string): string {
   const normalized = prompt.replace(/\s+/g, ' ').trim();
   if (normalized.length <= 64) return normalized;
   return `${normalized.slice(0, 61)}...`;
+}
+
+function sortSessionsByLastActivity(sessions: Session[]): Session[] {
+  return [...sessions].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
+
+function filterSessions(sessions: Session[], search: string): Session[] {
+  const query = search.trim().toLowerCase();
+  if (!query) return sessions;
+  return sessions
+    .map((session) => ({ session, score: fuzzyScore(`${session.title ?? ''} ${session.status} ${session.id}`, query) }))
+    .filter((match) => match.score !== null)
+    .sort((a, b) => a.score! - b.score!)
+    .map((match) => match.session);
+}
+
+function fuzzyScore(value: string, query: string): number | null {
+  const haystack = value.toLowerCase();
+  let score = 0;
+  let lastIndex = -1;
+
+  for (const char of query) {
+    if (char === ' ') continue;
+    const index = haystack.indexOf(char, lastIndex + 1);
+    if (index === -1) return null;
+    score += index - lastIndex - 1;
+    lastIndex = index;
+  }
+
+  if (haystack.includes(query)) score -= query.length;
+  if (haystack.startsWith(query)) score -= query.length * 2;
+  return score;
 }
 
 function submitOnModifierEnter(event: KeyboardEvent<HTMLTextAreaElement>): void {

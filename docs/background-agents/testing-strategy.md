@@ -73,13 +73,13 @@ Use real Postgres. Use `vercel-labs/emulate` for GitHub, Slack, and AWS when tes
 
 Current local policy:
 
-- `pnpm test` runs deterministic unit tests from `test/unit` without Postgres.
-- `pnpm test:integration` runs Postgres-backed integration tests and requires `TEST_DATABASE_URL`.
-- `pnpm test:uat` runs built-artifact UAT tests from `test/uat` and requires `TEST_DATABASE_URL` plus a prior `pnpm build`.
-- Real Daytona/Flue UAT is opt-in: set `RUN_REAL_DAYTONA_FLUE_UAT=true`, `DAYTONA_API_KEY`, `FLUE_MODEL`, and the model provider credentials required by that model before running `pnpm test:uat`.
+- `pnpm api:test` runs deterministic unit tests from `api/test/unit` without Postgres.
+- `pnpm api:test:integration` runs Postgres-backed integration tests and requires `TEST_DATABASE_URL`.
+- `pnpm api:test:uat` runs built-artifact UAT tests from `api/test/uat` and requires `TEST_DATABASE_URL` plus a prior `pnpm api:build`.
+- Real Daytona/Flue UAT is opt-in: set `RUN_REAL_DAYTONA_FLUE_UAT=true`, `DAYTONA_API_KEY`, `FLUE_MODEL`, and the model provider credentials required by that model before running `pnpm api:test:uat`.
 - `docker compose up -d postgres` starts local Postgres and creates both `flue` and `flue_test`.
 - Integration tests apply migrations to `flue_test` and truncate app tables between tests.
-- Do not run `test:integration` and `test:uat` concurrently against the same `TEST_DATABASE_URL`; both suites reset shared tables.
+- Do not run `api:test:integration` and `api:test:uat` concurrently against the same `TEST_DATABASE_URL`; both suites reset shared tables.
 - Testcontainers is deferred until we need fully hermetic per-run databases.
 - Architecture fitness tests currently run with unit tests and enforce Flue SDK isolation, integration-to-runner separation, and store-to-domain-service separation.
 - API tests exercise the Hono app through the Node adapter so middleware, routing, JSON responses, and SSE behavior remain covered as transport internals change.

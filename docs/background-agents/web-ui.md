@@ -7,7 +7,7 @@ The operator UI is a separate Vite React app in `web/`. It is intentionally inde
 Run the API and web app separately:
 
 ```sh
-pnpm dev
+pnpm api:dev
 pnpm web:dev
 ```
 

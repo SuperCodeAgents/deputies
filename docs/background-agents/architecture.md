@@ -125,7 +125,7 @@ This has practical consequences:
 - Tests should verify contracts at module boundaries so agents can safely change internals without widening context.
 
 ```txt
-src/
+api/src/
   api/
   app/
   sessions/
@@ -146,6 +146,8 @@ src/
   config/
   auth/
   prompts/
+
+web/
 
 docs/
   background-agents/
@@ -205,7 +207,7 @@ store -> domain services
 sessions/messages -> integration-specific modules
 ```
 
-Only `runner-flue` should import `@flue/sdk`. This keeps Flue replaceable and makes tests easier. Provider SDKs should stay in provider-specific sandbox adapters, such as `src/sandbox/daytona.ts` for `@daytona/sdk`. Store implementations may import shared data types, but must not import session/message/event service classes.
+Only `runner-flue` should import `@flue/sdk`. This keeps Flue replaceable and makes tests easier. Provider SDKs should stay in provider-specific sandbox adapters, such as `api/src/sandbox/daytona.ts` for `@daytona/sdk`. Store implementations may import shared data types, but must not import session/message/event service classes.
 
 The HTTP transport uses Hono on Node via `@hono/node-server`. This keeps the API layer lightweight while giving us middleware hooks for auth, request IDs, CORS, body limits, and route grouping as integrations grow.
 

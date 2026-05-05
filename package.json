@@ -10,32 +10,18 @@
   "scripts": {
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
-    "db:migrate": "tsx src/db/migrate.ts",
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
-    "build": "tsc -p tsconfig.build.json",
+    "api:db:migrate": "pnpm --dir api db:migrate",
+    "api:dev": "pnpm --dir api dev",
+    "api:start": "pnpm --dir api start",
+    "api:build": "pnpm --dir api build",
+    "api:typecheck": "pnpm --dir api typecheck",
+    "api:test": "pnpm --dir api test",
+    "api:test:integration": "pnpm --dir api test:integration",
+    "api:test:uat": "pnpm --dir api test:uat",
+    "api:test:watch": "pnpm --dir api test:watch",
     "web:dev": "pnpm --dir web dev",
     "web:build": "pnpm --dir web build",
     "web:typecheck": "pnpm --dir web typecheck",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:uat": "vitest run --config vitest.uat.config.ts",
-    "test:watch": "vitest",
-    "check": "pnpm typecheck && pnpm test"
-  },
-  "dependencies": {
-    "@daytona/sdk": "^0.171.0",
-    "@flue/sdk": "^0.3.10",
-    "@hono/node-server": "^2.0.1",
-    "hono": "^4.12.17",
-    "pg": "^8.20.0"
-  },
-  "devDependencies": {
-    "@types/node": "^22.10.10",
-    "@types/pg": "^8.20.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.9.2",
-    "vitest": "^4.0.0"
+    "check": "pnpm api:typecheck && pnpm api:test && pnpm web:typecheck"
   }
 }

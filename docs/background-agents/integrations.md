@@ -296,4 +296,4 @@ Required sections:
 - Relevant context.
 - Explicit untrusted-content boundary for external comments/bodies.
 
-Prompt templates live in `src/prompts`, not inside route handlers.
+Prompt templates live in `api/src/prompts`, not inside route handlers.

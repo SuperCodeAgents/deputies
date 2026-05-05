@@ -305,6 +305,7 @@ Current implementation:
 - `007_sandboxes.sql` creates the product sandbox lifecycle table.
 - Active sandbox lookup uses the latest non-destroyed `ready` or `unhealthy` row for a `(session_id, provider)` pair.
 - The worker health-checks and reconnects a ready active sandbox before running a follow-up message.
+- Stopped sandboxes remain active candidates and are restarted before reconnect when the provider supports start/stop.
 - If health or reconnect fails, the row is marked `unhealthy` and a replacement sandbox is created.
 
 ## Artifacts
