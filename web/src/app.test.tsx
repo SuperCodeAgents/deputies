@@ -154,6 +154,22 @@ it('shows run diagnostics for a single-message response', async () => {
   expect(screen.getByText('sandbox_ready')).toBeInTheDocument();
 });
 
+it('prefers final assistant response over streamed deltas', async () => {
+  mockApi({
+    messages: [messageFixture({ id: '00000000-0000-4000-8000-000000000121', sequence: 1, status: 'completed', prompt: 'single message' })],
+    events: [
+      eventFixture({ sequence: 1, type: 'message_started', runId: '00000000-0000-4000-8000-000000000221', messageId: '00000000-0000-4000-8000-000000000121', payload: { sequences: [1], batchSize: 1 } }),
+      eventFixture({ sequence: 2, type: 'agent_text_delta', runId: '00000000-0000-4000-8000-000000000221', messageId: '00000000-0000-4000-8000-000000000121', payload: { text: 'corrupted ' } }),
+      eventFixture({ sequence: 3, type: 'agent_text_delta', runId: '00000000-0000-4000-8000-000000000221', messageId: '00000000-0000-4000-8000-000000000121', payload: { text: 'stream' } }),
+      eventFixture({ sequence: 4, type: 'agent_response_final', runId: '00000000-0000-4000-8000-000000000221', messageId: '00000000-0000-4000-8000-000000000121', payload: { text: 'canonical final response' } }),
+    ],
+  });
+  render(<App />);
+
+  await screen.findByText('canonical final response');
+  expect(screen.queryByText('corrupted stream')).not.toBeInTheDocument();
+});
+
 it('preserves selected archived session and archived section after refresh', async () => {
   const archivedSession = { ...session, status: 'archived', title: 'Archived chosen' };
   localStorage.setItem('dev-deputies-selected-session-id', archivedSession.id);

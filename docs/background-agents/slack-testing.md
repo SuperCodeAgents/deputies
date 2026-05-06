@@ -62,6 +62,7 @@ Expected result:
 - When work starts, the bot adds `:hourglass_flowing_sand:` to the same Slack message.
 - When the final Slack reply is delivered, the bot adds `:white_check_mark:` to the same Slack message.
 - Follow-up replies in the same Slack thread reuse the same product session.
+- Follow-up replies to archived mapped sessions are acknowledged and ignored; when `SLACK_BOT_TOKEN` has `chat:write`, the bot replies in-thread explaining that the session is archived.
 - Duplicate Slack `event_id` deliveries do not create duplicate messages.
 - Events from teams, channels, or users outside configured allowlists are ignored.
 

@@ -2,12 +2,13 @@ import { randomUUID } from 'node:crypto';
 import type { MessageService } from '../../messages/service.js';
 import type { SessionService } from '../../sessions/service.js';
 import type { AppStore, MessageRecord, SessionRecord } from '../../store/types.js';
-import type { SlackReactionClient } from './client.js';
+import type { SlackReactionClient, SlackReplyClient } from './client.js';
 import { renderSlackPrompt, slackSessionTitle } from './prompts.js';
 import type { SlackAcceptedEvent, SlackEventEnvelope } from './types.js';
 
 export type SlackIntegrationOptions = {
   reactionClient?: SlackReactionClient;
+  replyClient?: SlackReplyClient;
   receivedReactionName?: string;
   allowedTeamIds?: string[];
   allowedChannelIds?: string[];
@@ -59,10 +60,16 @@ export class SlackIntegrationService {
       return { ok: true, type: 'ignored', reason: authorizationFailure };
     }
 
-    await this.addReceivedReaction(accepted);
-
     const threadId = slackExternalThreadId(accepted);
     const session = await this.getOrCreateSession(threadId, accepted);
+    if (session.status === 'archived') {
+      await this.store.markIntegrationDeliveryProcessed({ source: 'slack', dedupeKey: accepted.eventId, processedAt: new Date() });
+      await this.postArchivedSessionNotice(accepted);
+      return { ok: true, type: 'ignored', reason: 'session_archived' };
+    }
+
+    await this.addReceivedReaction(accepted);
+
     const message = await this.messages.enqueue({
       sessionId: session.id,
       prompt: renderSlackPrompt(accepted),
@@ -97,6 +104,20 @@ export class SlackIntegrationService {
       if (!response.ok && response.error !== 'already_reacted') {
         console.warn(`Slack reaction failed: ${response.error ?? 'unknown_error'}`);
       }
+    } catch (error) {
+      console.warn(error instanceof Error ? error.message : error);
+    }
+  }
+
+  private async postArchivedSessionNotice(event: SlackAcceptedEvent): Promise<void> {
+    if (!this.options.replyClient) return;
+    try {
+      const response = await this.options.replyClient.postThreadReply({
+        channel: event.channel,
+        threadTs: event.threadTs,
+        text: 'This Dev Deputies session is archived, so I did not queue your message. Restore the session in Dev Deputies before replying here again.',
+      });
+      if (!response.ok) console.warn(`Slack archived-session notice failed: ${response.error ?? 'unknown_error'}`);
     } catch (error) {
       console.warn(error instanceof Error ? error.message : error);
     }

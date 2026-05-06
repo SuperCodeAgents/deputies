@@ -116,6 +116,37 @@ describe('Slack integration', () => {
     expect(await store.listSessions()).toHaveLength(1);
   });
 
+  it('ignores Slack thread replies mapped to archived sessions', async () => {
+    const store = new MemoryStore();
+    const services = createServices(store);
+    const reactions: Array<{ channel: string; timestamp: string; name: string }> = [];
+    const replies: Array<{ channel: string; threadTs: string; text: string }> = [];
+    const slack = new SlackIntegrationService(store, services.sessions, services.messages, {
+      reactionClient: {
+        async addReaction(input) {
+          reactions.push(input);
+          return { ok: true };
+        },
+      },
+      replyClient: {
+        async postThreadReply(input) {
+          replies.push(input);
+          return { ok: true, ts: '1710000002.000100' };
+        },
+      },
+    });
+    const first = await slack.handle(slackEvent({ eventId: 'Ev1', type: 'app_mention', text: `<@${botUserId}> do work`, ts: '1710000000.000100' }));
+    if (first.type !== 'accepted') throw new Error('Expected accepted Slack event');
+    await services.sessions.archive(first.session.id);
+
+    const reply = await slack.handle(slackEvent({ eventId: 'Ev2', type: 'message', text: 'follow up', ts: '1710000001.000100', threadTs: '1710000000.000100' }));
+
+    expect(reply).toMatchObject({ type: 'ignored', reason: 'session_archived' });
+    await expect(services.messages.list(first.session.id)).resolves.toHaveLength(1);
+    expect(reactions).toEqual([{ channel: 'C123', timestamp: '1710000000.000100', name: 'eyes' }]);
+    expect(replies).toEqual([{ channel: 'C123', threadTs: '1710000000.000100', text: expect.stringContaining('session is archived') }]);
+  });
+
   it('handles signed Slack webhook challenges through the API route', async () => {
     const server = createServer(loadConfig({ SLACK_SIGNING_SECRET: signingSecret, UNSAFE_ALLOW_ALL_SLACK_IDS: 'true' }), createServices(new MemoryStore()));
     const baseUrl = await listen(server);

@@ -147,9 +147,11 @@ export function createApp(config: AppConfig, services = createServices()) {
     }
 
     try {
+      const slackClient = config.slackBotToken ? new SlackClient({ apiBaseUrl: config.slackApiBaseUrl, botToken: config.slackBotToken }) : null;
       const slackOptions = config.slackBotToken
         ? {
-            reactionClient: new SlackClient({ apiBaseUrl: config.slackApiBaseUrl, botToken: config.slackBotToken }),
+            reactionClient: slackClient!,
+            replyClient: slackClient!,
             allowedTeamIds: config.slackAllowedTeamIds,
             allowedChannelIds: config.slackAllowedChannelIds,
             allowedUserIds: config.slackAllowedUserIds,

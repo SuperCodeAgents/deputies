@@ -13,6 +13,7 @@ const eventTypes = new Set([
   'sandbox_starting',
   'sandbox_ready',
   'agent_text_delta',
+  'agent_response_final',
   'tool_started',
   'tool_finished',
   'artifact_created',

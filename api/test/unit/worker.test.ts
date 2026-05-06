@@ -39,6 +39,7 @@ describe('WorkerService', () => {
       'run_started',
       'agent_text_delta',
       'run_completed',
+      'agent_response_final',
       'message_completed',
     ]);
   });

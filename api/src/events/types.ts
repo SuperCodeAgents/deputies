@@ -27,6 +27,7 @@ export type NormalizedEventType =
   | 'sandbox_stopped'
   | 'sandbox_stop_failed'
   | 'agent_text_delta'
+  | 'agent_response_final'
   | 'tool_started'
   | 'tool_finished'
   | 'artifact_created'

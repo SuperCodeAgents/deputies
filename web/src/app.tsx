@@ -965,13 +965,15 @@ function buildAssistantText(events: AgentEvent[]): Record<string, string> {
       if (event.messageId) messageIdsBySequence[maybeSequence] = event.messageId;
     }
     if (event.messageId) currentMessageId = event.messageId;
-    if (event.type !== 'agent_text_delta') continue;
-
-    const text = event.payload.text;
-    if (typeof text !== 'string') continue;
     const messageId = event.messageId || currentMessageId || messageIdsBySequence[currentSequence];
     if (!messageId) continue;
-    outputByMessageId[messageId] = `${outputByMessageId[messageId] ?? ''}${text}`;
+    const text = event.payload.text;
+    if (typeof text !== 'string') continue;
+    if (event.type === 'agent_response_final') {
+      outputByMessageId[messageId] = text;
+    } else if (event.type === 'agent_text_delta') {
+      outputByMessageId[messageId] = `${outputByMessageId[messageId] ?? ''}${text}`;
+    }
   }
 
   return outputByMessageId;
@@ -1030,7 +1032,7 @@ function isCancellingRunGroup(messages: Message[]): boolean {
 function groupDiagnosticsByRun(events: AgentEvent[]): Record<string, AgentEvent[]> {
   const grouped: Record<string, AgentEvent[]> = {};
   for (const event of events) {
-    if (event.type === 'message_created' || event.type === 'agent_text_delta') continue;
+    if (event.type === 'message_created' || event.type === 'agent_text_delta' || event.type === 'agent_response_final') continue;
     for (const key of diagnosticGroupKeys(event)) {
       grouped[key] = [...(grouped[key] ?? []), event];
     }

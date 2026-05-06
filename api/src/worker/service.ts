@@ -191,6 +191,13 @@ export class WorkerService {
         },
       });
       if (await this.isRunCancellationRequested(claimed.run.id)) return;
+      await this.options.events.append({
+        sessionId: primary.sessionId,
+        runId: claimed.run.id,
+        messageId: primary.id,
+        type: 'agent_response_final',
+        payload: { text: result.text },
+      });
       await new ArtifactService(this.options.store, this.options.events).recordRunArtifacts({
         sessionId: primary.sessionId,
         runId: claimed.run.id,

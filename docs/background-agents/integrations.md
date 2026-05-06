@@ -223,6 +223,7 @@ Current implementation:
 - Optional `SLACK_ALLOWED_TEAM_IDS`, `SLACK_ALLOWED_CHANNEL_IDS`, and `SLACK_ALLOWED_USER_IDS` comma-separated allowlists reject unauthorized events before session/message creation. Slack is fail-closed when `SLACK_SIGNING_SECRET` is set: at least one allowlist is required unless `UNSAFE_ALLOW_ALL_SLACK_IDS=true` is explicitly configured.
 - `app_mention` creates or reuses a session keyed by `team_id:channel:thread_ts`.
 - `message` events are accepted only as thread follow-ups, not as new top-level sessions.
+- Thread follow-ups mapped to archived sessions are acknowledged and ignored so archived sessions remain read-only. When Slack replies are configured, the bot posts an in-thread notice explaining that the session must be restored first.
 - Duplicate `event_id` values are ignored through `integration_deliveries`.
 - Bot messages are ignored to prevent loops.
 - Accepted Slack messages get a best-effort `:eyes:` reaction when `SLACK_BOT_TOKEN` has `reactions:write`.
