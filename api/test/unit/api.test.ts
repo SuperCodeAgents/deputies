@@ -55,6 +55,44 @@ describe('core API', () => {
     expectSessionResponse(await validAuth.json());
   });
 
+  it('supports static login with session cookies', async () => {
+    await closeServer(server);
+    server = createServer(loadConfig({
+      API_AUTH_MODE: 'session',
+      AUTH_STATIC_USERNAME: 'dev',
+      AUTH_STATIC_PASSWORD: 'password',
+      AUTH_SESSION_SECRET: 'test-secret',
+    }));
+    baseUrl = await listen(server);
+
+    const unauthenticated = await fetch(`${baseUrl}/sessions`);
+    expect(unauthenticated.status).toBe(401);
+
+    const badLogin = await postJson(`${baseUrl}/auth/login`, { username: 'dev', password: 'wrong' });
+    expect(badLogin.status).toBe(401);
+
+    const login = await postJson(`${baseUrl}/auth/login`, { username: 'dev', password: 'password' });
+    expect(login.status).toBe(200);
+    const cookie = login.headers.get('set-cookie');
+    expect(cookie).toContain('dev_deputies_session=');
+    await expect(login.json()).resolves.toMatchObject({ user: { username: 'dev' } });
+
+    const me = await fetch(`${baseUrl}/auth/me`, { headers: { cookie: cookie! } });
+    expect(me.status).toBe(200);
+    await expect(me.json()).resolves.toMatchObject({ user: { username: 'dev' } });
+
+    const createSession = await fetch(`${baseUrl}/sessions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: cookie! },
+      body: JSON.stringify({ title: 'Cookie session' }),
+    });
+    expect(createSession.status).toBe(201);
+    expectSessionResponse(await createSession.json());
+
+    const logout = await fetch(`${baseUrl}/auth/logout`, { method: 'POST', headers: { cookie: cookie! } });
+    expect(logout.headers.get('set-cookie')).toContain('Max-Age=0');
+  });
+
   it('allows PATCH session title updates through CORS preflight', async () => {
     const response = await fetch(`${baseUrl}/sessions/00000000-0000-4000-8000-000000000001`, {
       method: 'OPTIONS',
@@ -210,6 +248,17 @@ describe('core API', () => {
     const eventsBody = await eventsResponse.json();
     expectEventsResponse(eventsBody);
     expect(eventsBody.events.map((event) => event.type)).toEqual(['session_created', 'session_archived']);
+  });
+
+  it('rejects messages for archived sessions', async () => {
+    const createSession = await postJson(`${baseUrl}/sessions`, { title: 'Archived messages' });
+    const { session } = (await createSession.json()) as { session: { id: string } };
+    await postJson(`${baseUrl}/sessions/${session.id}/archive`, {});
+
+    const createMessage = await postJson(`${baseUrl}/sessions/${session.id}/messages`, { prompt: 'do not enqueue' });
+
+    expect(createMessage.status).toBe(409);
+    await expect(createMessage.json()).resolves.toMatchObject({ error: 'conflict', message: 'Cannot enqueue messages to an archived session' });
   });
 
   it('destroys active session sandboxes when archiving', async () => {

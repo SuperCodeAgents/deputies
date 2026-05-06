@@ -65,6 +65,34 @@ it('shows and calls cancel run for an active session', async () => {
   await waitFor(() => expect(cancelled).toBe(true));
 });
 
+it('logs in with session auth before loading sessions', async () => {
+  const logins: Array<{ username: string; password: string }> = [];
+  mockApi({ authMode: 'session', currentUser: null, logins });
+  render(<App />);
+
+  fireEvent.change(await screen.findByPlaceholderText('Username'), { target: { value: 'dev' } });
+  fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'password' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+  await screen.findAllByText('Existing session');
+  expect(logins).toEqual([{ username: 'dev', password: 'password' }]);
+});
+
+it('requires restoring archived sessions before sending messages', async () => {
+  const submittedPrompts: string[] = [];
+  mockApi({ sessionOverride: { status: 'archived' }, submittedPrompts });
+  render(<App />);
+
+  expect(await screen.findByText('This session is archived.')).toBeInTheDocument();
+  const composer = screen.getByPlaceholderText('Restore this archived session before sending new work.');
+  expect(composer).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  fireEvent.click(screen.getAllByRole('button', { name: 'Restore session' }).at(-1)!);
+
+  await screen.findByPlaceholderText('Ask your deputy to investigate, change code, or follow up...');
+  expect(submittedPrompts).toEqual([]);
+});
+
 it('keeps a cancelled middle message inline with its surrounding batch', async () => {
   mockApi({
     messages: [
@@ -89,18 +117,40 @@ it('keeps a cancelled middle message inline with its surrounding batch', async (
   expect(screen.getAllByText(/Diagnostics/)).toHaveLength(1);
 });
 
-function mockApi(options: { submittedPrompts?: string[]; messages?: unknown[]; events?: unknown[]; sessionOverride?: Partial<typeof session>; onCancelRun?: () => void } = {}) {
-  const currentSession = { ...session, ...options.sessionOverride };
+function mockApi(options: { submittedPrompts?: string[]; messages?: unknown[]; events?: unknown[]; sessionOverride?: Partial<typeof session>; onCancelRun?: () => void; authMode?: 'none' | 'bearer' | 'session'; currentUser?: { username: string } | null; logins?: Array<{ username: string; password: string }> } = {}) {
+  let currentSession = { ...session, ...options.sessionOverride };
+  let currentUser = options.currentUser;
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const method = init?.method ?? 'GET';
 
     if (url.pathname === '/health') {
-      return jsonResponse({ status: 'ok', runMode: 'all', apiAuthMode: 'none' });
+      return jsonResponse({ status: 'ok', runMode: 'all', apiAuthMode: options.authMode ?? 'none' });
+    }
+
+    if (url.pathname === '/auth/me') {
+      return currentUser ? jsonResponse({ user: currentUser }) : jsonResponse({ error: 'unauthorized', message: 'Missing or invalid session' }, 401);
+    }
+
+    if (url.pathname === '/auth/login' && method === 'POST') {
+      const body = JSON.parse(String(init?.body)) as { username: string; password: string };
+      options.logins?.push(body);
+      currentUser = { username: body.username };
+      return jsonResponse({ user: currentUser });
+    }
+
+    if (url.pathname === '/auth/logout' && method === 'POST') {
+      currentUser = null;
+      return jsonResponse({ ok: true });
     }
 
     if (url.pathname === '/sessions' && method === 'GET') {
       return jsonResponse({ sessions: [currentSession] });
+    }
+
+    if (url.pathname === `/sessions/${currentSession.id}/unarchive` && method === 'POST') {
+      currentSession = { ...currentSession, status: 'idle' };
+      return jsonResponse({ session: currentSession });
     }
 
     if (url.pathname === `/sessions/${currentSession.id}/messages` && method === 'GET') {

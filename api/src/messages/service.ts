@@ -20,6 +20,9 @@ export class MessageService {
     if (!session) {
       throw new MessageServiceError('not_found', `Session not found: ${input.sessionId}`);
     }
+    if (session.status === 'archived') {
+      throw new MessageServiceError('conflict', 'Cannot enqueue messages to an archived session');
+    }
 
     const sequence = await this.store.nextMessageSequence(input.sessionId);
     const record: MessageRecord = {

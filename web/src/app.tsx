@@ -12,11 +12,14 @@ import {
   createSession,
   enqueueMessage,
   getApiBaseUrl,
+  getCurrentUser,
   getHealth,
+  login,
   listArtifacts,
   listEvents,
   listMessages,
   listSessions,
+  logout,
   pauseQueue,
   resumeQueue,
   streamEvents,
@@ -24,6 +27,7 @@ import {
   updateMessage,
   updateSession,
   type Health,
+  type AuthUser,
 } from './api.js';
 import { Badge } from './components/ui/badge.js';
 import { Button } from './components/ui/button.js';
@@ -43,6 +47,7 @@ function loadStoredToken(): string {
 
 export function App() {
   const [health, setHealth] = useState<Health | null>(null);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState(loadStoredToken);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
@@ -59,15 +64,19 @@ export function App() {
   const [editingMessageId, setEditingMessageId] = useState('');
   const [messageDraft, setMessageDraft] = useState('');
   const [draftToken, setDraftToken] = useState(token);
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [threadSearch, setThreadSearch] = useState('');
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const eventCursor = useRef(0);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
 
-  const authRequired = health?.apiAuthMode === 'bearer';
-  const canCallApi = Boolean(health) && (!authRequired || Boolean(token));
+  const bearerAuthRequired = health?.apiAuthMode === 'bearer';
+  const sessionAuthRequired = health?.apiAuthMode === 'session';
+  const canCallApi = Boolean(health) && (!bearerAuthRequired || Boolean(token)) && (!sessionAuthRequired || Boolean(currentUser));
   const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null;
+  const selectedSessionArchived = selectedSession?.status === 'archived';
   const hasActiveRun = messages.some((message) => message.status === 'processing' || message.status === 'cancelling') || selectedSession?.status === 'active';
   const filteredSessions = filterSessions(sortSessionsByLastActivity(sessions), threadSearch);
   const activeSessions = filteredSessions.filter((session) => session.status !== 'archived');
@@ -83,6 +92,13 @@ export function App() {
       .then(setHealth)
       .catch((err: unknown) => setError(errorMessage(err)));
   }, []);
+
+  useEffect(() => {
+    if (health?.apiAuthMode !== 'session') return;
+    getCurrentUser()
+      .then(setCurrentUser)
+      .catch(() => setCurrentUser(null));
+  }, [health?.apiAuthMode]);
 
   useEffect(() => {
     if (!canCallApi) return;
@@ -116,7 +132,11 @@ export function App() {
         }
       },
     }).catch((err: unknown) => {
-      if (!abort.signal.aborted) setError(errorMessage(err));
+      if (!abort.signal.aborted) {
+        refreshSessionDetail(selectedSessionId).catch(() => undefined);
+        refreshSessions().catch(() => undefined);
+        setError(errorMessage(err));
+      }
     });
 
     return () => abort.abort();
@@ -188,13 +208,14 @@ export function App() {
 
   async function handleSendMessage(event: FormEvent) {
     event.preventDefault();
-    if (!selectedSessionId || !prompt.trim()) return;
+    if (!selectedSessionId || selectedSessionArchived || !prompt.trim()) return;
     setError('');
     try {
       const message = await enqueueMessage({ sessionId: selectedSessionId, prompt: prompt.trim(), token });
       setMessages((current) => [...current, message]);
       setPrompt('');
       await refreshSessions();
+      await refreshSessionDetail(selectedSessionId);
     } catch (err) {
       handleApiError(err);
     }
@@ -295,7 +316,24 @@ export function App() {
     setError('');
   }
 
+  async function handleLogin(event: FormEvent) {
+    event.preventDefault();
+    setError('');
+    try {
+      const user = await login({ username: loginUsername.trim(), password: loginPassword });
+      setCurrentUser(user);
+      setLoginPassword('');
+    } catch (err) {
+      handleApiError(err);
+    }
+  }
+
   function signOut() {
+    if (sessionAuthRequired) {
+      void logout().catch(() => undefined);
+      setCurrentUser(null);
+      setLoginPassword('');
+    }
     localStorage.removeItem(tokenStorageKey);
     localStorage.removeItem(legacyTokenStorageKey);
     setToken('');
@@ -358,6 +396,17 @@ export function App() {
     }
   }
 
+  async function restoreSelectedSession() {
+    if (!selectedSessionId) return;
+    setError('');
+    try {
+      const session = await unarchiveSession({ sessionId: selectedSessionId, token });
+      setSessions((current) => current.map((candidate) => (candidate.id === session.id ? session : candidate)));
+    } catch (err) {
+      handleApiError(err);
+    }
+  }
+
   function handleApiError(err: unknown) {
     if (err instanceof ApiError && err.status === 401) signOut();
     setError(errorMessage(err));
@@ -367,7 +416,7 @@ export function App() {
     <main className="flex h-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
       {error ? <div className="border-b border-red-900/60 bg-red-950/40 px-4 py-2 text-sm text-red-200">{error}</div> : null}
 
-      {authRequired && !token ? <AuthPanel draftToken={draftToken} setDraftToken={setDraftToken} saveToken={saveToken} /> : (
+      {bearerAuthRequired && !token ? <BearerAuthPanel draftToken={draftToken} setDraftToken={setDraftToken} saveToken={saveToken} /> : sessionAuthRequired && !currentUser ? <SessionAuthPanel password={loginPassword} username={loginUsername} onPasswordChange={setLoginPassword} onSubmit={handleLogin} onUsernameChange={setLoginUsername} /> : (
         <>
 
       {!sidebarCollapsed && !sidebarOpen ? (
@@ -393,7 +442,7 @@ export function App() {
             <ThreadSidebar
               activeSessions={activeSessions}
               archivedSessions={archivedSessions}
-              authRequired={authRequired}
+              authRequired={bearerAuthRequired || sessionAuthRequired}
               canCallApi={canCallApi}
               health={health}
               loading={loading}
@@ -451,6 +500,7 @@ export function App() {
                     />
                     <div ref={threadEndRef} />
                   </div>
+                  {selectedSessionArchived ? <ArchivedSessionNotice onRestore={restoreSelectedSession} /> : null}
                   <form className="shrink-0 bg-slate-950/95 py-3" onSubmit={handleSendMessage}>
                     <Card className="overflow-hidden border-slate-700 bg-slate-900/70">
                       <Textarea
@@ -458,11 +508,12 @@ export function App() {
                         value={prompt}
                         onChange={(event) => setPrompt(event.target.value)}
                         onKeyDown={(event) => submitOnEnter(event)}
-                        placeholder="Ask your deputy to investigate, change code, or follow up..."
+                        placeholder={selectedSessionArchived ? 'Restore this archived session before sending new work.' : 'Ask your deputy to investigate, change code, or follow up...'}
+                        disabled={selectedSessionArchived}
                       />
                       <div className="flex items-center justify-between border-t border-slate-800 px-3 py-2 text-xs text-slate-500">
-                        <span>Enter to send · Shift Enter for newline</span>
-                        <Button type="submit" disabled={!prompt.trim()}>Send message</Button>
+                        <span>{selectedSessionArchived ? 'Archived sessions are read-only until restored.' : 'Enter to send · Shift Enter for newline'}</span>
+                        <Button type="submit" disabled={selectedSessionArchived || !prompt.trim()}>Send message</Button>
                       </div>
                     </Card>
                   </form>
@@ -558,7 +609,7 @@ function ApiStatusFooter(props: { authRequired: boolean; health: Health | null; 
       </div>
       <p className="mt-1 truncate">{getApiBaseUrl()}</p>
       {props.health ? <p>{props.health.runMode} mode · auth {props.health.apiAuthMode}</p> : null}
-      {props.authRequired && props.token ? <Button className="mt-2" variant="secondary" size="sm" onClick={props.onSignOut}>Clear token</Button> : null}
+      {props.authRequired && (props.token || props.health?.apiAuthMode === 'session') ? <Button className="mt-2" variant="secondary" size="sm" onClick={props.onSignOut}>{props.health?.apiAuthMode === 'session' ? 'Sign out' : 'Clear token'}</Button> : null}
     </div>
   );
 }
@@ -582,7 +633,19 @@ function SessionButton(props: {
   );
 }
 
-function AuthPanel(props: { draftToken: string; setDraftToken: (value: string) => void; saveToken: (event: FormEvent) => void }) {
+function ArchivedSessionNotice(props: { onRestore: () => void }) {
+  return (
+    <Card className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3 border-amber-700/60 bg-amber-950/20 p-3">
+      <div>
+        <p className="text-sm font-medium text-amber-100">This session is archived.</p>
+        <p className="text-xs text-amber-200/70">Restore it before sending a new message.</p>
+      </div>
+      <Button type="button" variant="secondary" onClick={props.onRestore}><RotateCcw className="h-4 w-4" /> Restore session</Button>
+    </Card>
+  );
+}
+
+function BearerAuthPanel(props: { draftToken: string; setDraftToken: (value: string) => void; saveToken: (event: FormEvent) => void }) {
   return (
     <section className="grid min-h-screen place-items-center px-4">
       <Card className="w-full max-w-2xl p-5">
@@ -598,6 +661,29 @@ function AuthPanel(props: { draftToken: string; setDraftToken: (value: string) =
             <Input type="password" value={props.draftToken} onChange={(event) => props.setDraftToken(event.target.value)} placeholder="Bearer token" />
             <Button type="submit">Use token</Button>
           </div>
+        </form>
+      </Card>
+    </section>
+  );
+}
+
+function SessionAuthPanel(props: { username: string; password: string; onUsernameChange: (value: string) => void; onPasswordChange: (value: string) => void; onSubmit: (event: FormEvent) => void }) {
+  return (
+    <section className="grid min-h-screen place-items-center px-4">
+      <Card className="w-full max-w-2xl p-5">
+        <p className="text-xs font-semibold uppercase tracking-widest text-sky-300">Dev Deputies</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50">Sign in to your async engineering deputies.</h1>
+        <p className="mt-2 text-sm text-slate-400">Use your operator credentials. OAuth providers can plug into this same session flow later.</p>
+        <form className="mt-6 grid gap-3" onSubmit={props.onSubmit}>
+          <div>
+            <strong>Operator login</strong>
+            <p className="text-sm text-slate-400">The API will set an HTTP-only session cookie after login.</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Input value={props.username} onChange={(event) => props.onUsernameChange(event.target.value)} placeholder="Username" autoComplete="username" />
+            <Input type="password" value={props.password} onChange={(event) => props.onPasswordChange(event.target.value)} placeholder="Password" autoComplete="current-password" />
+          </div>
+          <Button className="justify-self-end" type="submit" disabled={!props.username.trim() || !props.password}>Sign in</Button>
         </form>
       </Card>
     </section>

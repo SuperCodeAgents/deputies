@@ -5,7 +5,8 @@ import { Hono } from 'hono';
 import type { Context, MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
 import { apiAuthMiddleware } from '../auth/middleware.js';
-import type { AppConfig } from '../config/index.js';
+import { clearSessionCookie, createSessionCookie, readSession } from '../auth/session.js';
+import { requireAuthSessionSecret, requireStaticCredentials, type AppConfig } from '../config/index.js';
 import { EventService } from '../events/service.js';
 import { GenericWebhookError, GenericWebhookService } from '../integrations/generic-webhook/service.js';
 import { MessageService, MessageServiceError } from '../messages/service.js';
@@ -47,7 +48,7 @@ export function createApp(config: AppConfig, services = createServices()) {
   const app = new Hono<{ Variables: AppVariables }>();
 
   app.use('*', requestIdMiddleware());
-  app.use('*', cors({ origin: '*', allowHeaders: ['authorization', 'content-type', 'x-request-id'], allowMethods: ['GET', 'POST', 'PATCH', 'OPTIONS'] }));
+  app.use('*', cors({ origin: (origin) => origin, credentials: true, allowHeaders: ['authorization', 'content-type', 'x-request-id'], allowMethods: ['GET', 'POST', 'PATCH', 'OPTIONS'] }));
 
   app.onError((error, c) => {
     if (error instanceof HttpRequestError) {
@@ -59,6 +60,35 @@ export function createApp(config: AppConfig, services = createServices()) {
   app.notFound((c) => c.json({ error: 'not_found', message: 'Route not found' }, 404));
 
   app.get('/health', (c) => c.json({ status: 'ok', runMode: config.runMode, apiAuthMode: config.apiAuthMode }));
+
+  app.post('/auth/login', async (c) => {
+    if (config.apiAuthMode !== 'session') return writeError(c, 404, 'not_found', 'Route not found');
+    const body = await readJsonBody(c, config.maxJsonBodyBytes);
+    const username = optionalString(body.username);
+    const password = optionalString(body.password);
+    if (!username || !password) return writeError(c, 400, 'invalid_request', 'Expected username and password');
+
+    const credentials = requireStaticCredentials(config);
+    if (username !== credentials.username || password !== credentials.password) {
+      return writeError(c, 401, 'unauthorized', 'Invalid username or password');
+    }
+
+    c.header('set-cookie', createSessionCookie({ username, secret: requireAuthSessionSecret(config), secure: config.authCookieSecure }));
+    return c.json({ user: { username } });
+  });
+
+  app.post('/auth/logout', (c) => {
+    if (config.apiAuthMode === 'session') c.header('set-cookie', clearSessionCookie(config));
+    return c.json({ ok: true });
+  });
+
+  app.get('/auth/me', (c) => {
+    if (config.apiAuthMode === 'none') return c.json({ user: null });
+    if (config.apiAuthMode === 'bearer') return c.json({ user: null });
+    const session = readSession(c, config);
+    if (!session) return writeError(c, 401, 'unauthorized', 'Missing or invalid session');
+    return c.json({ user: { username: session.username } });
+  });
 
   app.use('/sessions/*', apiAuthMiddleware(config));
   app.use('/sessions', apiAuthMiddleware(config));
@@ -185,6 +215,7 @@ export function createApp(config: AppConfig, services = createServices()) {
       if (error instanceof MessageServiceError && error.code === 'not_found') {
         return writeError(c, 404, 'not_found', 'Session not found');
       }
+      if (error instanceof MessageServiceError && error.code === 'conflict') return writeError(c, 409, 'conflict', error.message);
       throw error;
     }
   });

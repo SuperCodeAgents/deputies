@@ -2,7 +2,7 @@ export type RunMode = 'all' | 'api' | 'worker';
 export type RunnerKind = 'fake' | 'flue';
 export type SandboxProviderKind = 'fake' | 'local-docker' | 'daytona' | 'kubernetes' | 'ecs';
 export type AppStoreKind = 'memory' | 'postgres';
-export type ApiAuthMode = 'none' | 'bearer';
+export type ApiAuthMode = 'none' | 'bearer' | 'session';
 
 export type AppConfig = {
   port: number;
@@ -17,6 +17,10 @@ export type AppConfig = {
   appStore: AppStoreKind;
   apiAuthMode: ApiAuthMode;
   apiBearerToken?: string;
+  authStaticUsername?: string;
+  authStaticPassword?: string;
+  authSessionSecret?: string;
+  authCookieSecure: boolean;
   databaseUrl?: string;
   flueSessionStore: 'postgres' | 'memory';
   flueModel?: string;
@@ -43,11 +47,15 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
       'fake',
     ),
     appStore: parseEnum(env.APP_STORE, ['memory', 'postgres'], 'memory'),
-    apiAuthMode: parseEnum(env.API_AUTH_MODE, ['none', 'bearer'], 'none'),
+    apiAuthMode: parseEnum(env.API_AUTH_MODE, ['none', 'bearer', 'session'], 'none'),
+    authCookieSecure: parseBoolean(env.AUTH_COOKIE_SECURE, false, 'AUTH_COOKIE_SECURE'),
     flueSessionStore: parseEnum(env.FLUE_SESSION_STORE, ['postgres', 'memory'], 'postgres'),
   };
 
   if (env.API_BEARER_TOKEN) config.apiBearerToken = env.API_BEARER_TOKEN;
+  if (env.AUTH_STATIC_USERNAME) config.authStaticUsername = env.AUTH_STATIC_USERNAME;
+  if (env.AUTH_STATIC_PASSWORD) config.authStaticPassword = env.AUTH_STATIC_PASSWORD;
+  if (env.AUTH_SESSION_SECRET) config.authSessionSecret = env.AUTH_SESSION_SECRET;
   if (env.DATABASE_URL) config.databaseUrl = env.DATABASE_URL;
   if (env.FLUE_MODEL) config.flueModel = env.FLUE_MODEL;
   if (env.DAYTONA_API_KEY) config.daytonaApiKey = env.DAYTONA_API_KEY;
@@ -65,6 +73,22 @@ export function requireApiBearerToken(config: AppConfig): string {
   }
 
   return config.apiBearerToken;
+}
+
+export function requireAuthSessionSecret(config: AppConfig): string {
+  if (!config.authSessionSecret) {
+    throw new Error('AUTH_SESSION_SECRET is required when API_AUTH_MODE=session');
+  }
+
+  return config.authSessionSecret;
+}
+
+export function requireStaticCredentials(config: AppConfig): { username: string; password: string } {
+  if (!config.authStaticUsername || !config.authStaticPassword) {
+    throw new Error('AUTH_STATIC_USERNAME and AUTH_STATIC_PASSWORD are required when API_AUTH_MODE=session');
+  }
+
+  return { username: config.authStaticUsername, password: config.authStaticPassword };
 }
 
 export function requireDaytonaApiKey(config: AppConfig): string {
@@ -122,6 +146,13 @@ function parseNonNegativeInteger(value: string | undefined, fallback: number, na
   }
 
   return parsed;
+}
+
+function parseBoolean(value: string | undefined, fallback: boolean, name: string): boolean {
+  if (!value) return fallback;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new Error(`${name} must be true or false, received "${value}"`);
 }
 
 function parseEnum<const T extends readonly string[]>(

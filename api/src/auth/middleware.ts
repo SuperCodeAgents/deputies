@@ -1,5 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono';
+import { requireApiBearerToken } from '../config/index.js';
 import type { AppConfig } from '../config/index.js';
+import { readSession } from './session.js';
 
 export function apiAuthMiddleware(config: AppConfig): MiddlewareHandler {
   return async (c, next) => {
@@ -8,12 +10,14 @@ export function apiAuthMiddleware(config: AppConfig): MiddlewareHandler {
       return;
     }
 
-    if (!config.apiBearerToken) {
-      return writeAuthError(c, 'API bearer auth is enabled but no token is configured');
+    if (config.apiAuthMode === 'session') {
+      if (!readSession(c, config)) return writeAuthError(c, 'Missing or invalid session');
+      await next();
+      return;
     }
 
     const authorization = c.req.header('authorization');
-    if (authorization !== `Bearer ${config.apiBearerToken}`) {
+    if (authorization !== `Bearer ${requireApiBearerToken(config)}`) {
       return writeAuthError(c, 'Missing or invalid bearer token');
     }
 

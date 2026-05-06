@@ -1,4 +1,4 @@
-export type ApiAuthMode = 'none' | 'bearer';
+export type ApiAuthMode = 'none' | 'bearer' | 'session';
 
 export type Health = {
   status: 'ok';
@@ -44,6 +44,10 @@ export type Artifact = {
   url?: string;
 };
 
+export type AuthUser = {
+  username: string;
+};
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -53,7 +57,7 @@ export class ApiError extends Error {
   }
 }
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:3583').replace(/\/$/, '');
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3583').replace(/\/$/, '');
 
 export function getApiBaseUrl(): string {
   return apiBaseUrl;
@@ -61,6 +65,23 @@ export function getApiBaseUrl(): string {
 
 export async function getHealth(): Promise<Health> {
   return request<Health>('/health');
+}
+
+export async function getCurrentUser(): Promise<AuthUser | null> {
+  const body = await request<{ user: AuthUser | null }>('/auth/me');
+  return body.user;
+}
+
+export async function login(input: { username: string; password: string }): Promise<AuthUser> {
+  const body = await request<{ user: AuthUser }>('/auth/login', {
+    method: 'POST',
+    body: { username: input.username, password: input.password },
+  });
+  return body.user;
+}
+
+export async function logout(): Promise<void> {
+  await request<{ ok: true }>('/auth/logout', { method: 'POST', body: {} });
 }
 
 export async function listSessions(token: string): Promise<Session[]> {
@@ -182,6 +203,7 @@ export async function streamEvents(input: {
 }): Promise<void> {
   const response = await fetch(`${apiBaseUrl}/sessions/${input.sessionId}/events/stream?after=${input.after}`, {
     headers: authHeaders(input.token),
+    credentials: 'include',
     signal: input.signal,
   });
 
@@ -210,6 +232,7 @@ export async function streamEvents(input: {
 async function request<T>(path: string, options: { method?: string; token?: string; body?: unknown } = {}): Promise<T> {
   const requestInit: RequestInit = {
     method: options.method ?? 'GET',
+    credentials: 'include',
     headers: {
       ...authHeaders(options.token ?? ''),
       ...(options.body ? { 'content-type': 'application/json' } : {}),

@@ -14,6 +14,7 @@ describe('loadConfig', () => {
       sandboxProvider: 'fake',
       appStore: 'memory',
       apiAuthMode: 'none',
+      authCookieSecure: false,
       flueSessionStore: 'postgres',
     });
   });
@@ -31,8 +32,12 @@ describe('loadConfig', () => {
         RUNNER: 'flue',
         SANDBOX_PROVIDER: 'kubernetes',
         APP_STORE: 'postgres',
-        API_AUTH_MODE: 'bearer',
+        API_AUTH_MODE: 'session',
         API_BEARER_TOKEN: 'api-token',
+        AUTH_STATIC_USERNAME: 'dev',
+        AUTH_STATIC_PASSWORD: 'password',
+        AUTH_SESSION_SECRET: 'session-secret',
+        AUTH_COOKIE_SECURE: 'true',
         DATABASE_URL: 'postgres://example',
         FLUE_MODEL: 'anthropic/claude-haiku-4-5',
         FLUE_SESSION_STORE: 'memory',
@@ -52,8 +57,12 @@ describe('loadConfig', () => {
       runner: 'flue',
       sandboxProvider: 'kubernetes',
       appStore: 'postgres',
-      apiAuthMode: 'bearer',
+      apiAuthMode: 'session',
       apiBearerToken: 'api-token',
+      authStaticUsername: 'dev',
+      authStaticPassword: 'password',
+      authSessionSecret: 'session-secret',
+      authCookieSecure: true,
       databaseUrl: 'postgres://example',
       flueModel: 'anthropic/claude-haiku-4-5',
       flueSessionStore: 'memory',
@@ -90,5 +99,9 @@ describe('loadConfig', () => {
 
   it('rejects invalid enum values', () => {
     expect(() => loadConfig({ RUN_MODE: 'cloudflare' })).toThrow('Expected one of all, api, worker');
+  });
+
+  it('rejects invalid boolean values', () => {
+    expect(() => loadConfig({ AUTH_COOKIE_SECURE: 'yes' })).toThrow('AUTH_COOKIE_SECURE must be true or false');
   });
 });
