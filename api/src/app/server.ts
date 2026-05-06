@@ -9,6 +9,8 @@ import type { AppConfig } from '../config/index.js';
 import { EventService } from '../events/service.js';
 import { GenericWebhookError, GenericWebhookService } from '../integrations/generic-webhook/service.js';
 import { MessageService, MessageServiceError } from '../messages/service.js';
+import { SandboxCleanupService } from '../sandbox/service.js';
+import type { SandboxProvider } from '../sandbox/types.js';
 import { SessionService, SessionServiceError } from '../sessions/service.js';
 import { MemoryStore } from '../store/memory.js';
 import type { AppStore } from '../store/types.js';
@@ -23,19 +25,22 @@ export type AppServices = {
   sessions: SessionService;
   messages: MessageService;
   genericWebhooks: GenericWebhookService;
+  sandboxCleanup?: SandboxCleanupService;
 };
 
-export function createServices(store: AppStore = new MemoryStore()): AppServices {
+export function createServices(store: AppStore = new MemoryStore(), options: { sandboxProvider?: SandboxProvider } = {}): AppServices {
   const events = new EventService(store);
   const sessions = new SessionService(store, events);
   const messages = new MessageService(store, events);
-  return {
+  const services: AppServices = {
     store,
     events,
     sessions,
     messages,
     genericWebhooks: new GenericWebhookService(store, sessions, messages),
   };
+  if (options.sandboxProvider) services.sandboxCleanup = new SandboxCleanupService(store, events, options.sandboxProvider);
+  return services;
 }
 
 export function createApp(config: AppConfig, services = createServices()) {
@@ -114,6 +119,7 @@ export function createApp(config: AppConfig, services = createServices()) {
   app.post('/sessions/:sessionId/archive', async (c) => {
     try {
       const session = await services.sessions.archive(c.req.param('sessionId'));
+      await services.sandboxCleanup?.destroySessionSandboxes(session.id);
       return c.json({ session });
     } catch (error) {
       if (error instanceof SessionServiceError && error.code === 'not_found') {

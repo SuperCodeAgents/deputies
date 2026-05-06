@@ -25,6 +25,7 @@ export class FakeSandboxProvider implements SandboxProvider {
   private readonly sandboxes = new Map<string, SandboxHandle>();
   private readonly stopped = new Set<string>();
   starts = 0;
+  destroys = 0;
 
   async create(input: CreateSandboxInput): Promise<SandboxHandle> {
     const handle = createFakeHandle({
@@ -52,6 +53,7 @@ export class FakeSandboxProvider implements SandboxProvider {
   }
 
   async destroy(input: SandboxRef): Promise<void> {
+    this.destroys += 1;
     this.sandboxes.delete(input.providerSandboxId);
     this.stopped.delete(input.providerSandboxId);
   }

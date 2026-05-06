@@ -176,11 +176,24 @@ export class MemoryStore implements AppStore {
   }
 
   async getActiveSandbox(sessionId: string, provider: string): Promise<SandboxRecord | null> {
-    const candidates = Array.from(this.sandboxes.values())
+    return (await this.listActiveSandboxes(sessionId, provider))[0] ?? null;
+  }
+
+  async listActiveSandboxes(sessionId: string, provider: string): Promise<SandboxRecord[]> {
+    return Array.from(this.sandboxes.values())
       .filter((sandbox) => sandbox.sessionId === sessionId && sandbox.provider === provider)
-      .filter((sandbox) => !sandbox.destroyedAt && (sandbox.status === 'ready' || sandbox.status === 'stopped' || sandbox.status === 'unhealthy'))
+      .filter(isActiveSandbox)
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
-    return candidates[0] ?? null;
+  }
+
+  async listIdleSandboxes(input: { provider: string; idleBefore: Date; limit: number }): Promise<SandboxRecord[]> {
+    return Array.from(this.sandboxes.values())
+      .filter((sandbox) => sandbox.provider === input.provider)
+      .filter(isActiveSandbox)
+      .filter((sandbox) => sandbox.updatedAt <= input.idleBefore)
+      .filter((sandbox) => this.sessions.get(sandbox.sessionId)?.status !== 'active')
+      .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())
+      .slice(0, input.limit);
   }
 
   async createSandbox(record: CreateSandboxRecord): Promise<SandboxRecord> {
@@ -363,6 +376,10 @@ export class MemoryStore implements AppStore {
     if (!existing) throw new Error(`Callback delivery does not exist: ${id}`);
     return existing;
   }
+}
+
+function isActiveSandbox(sandbox: SandboxRecord): boolean {
+  return !sandbox.destroyedAt && (sandbox.status === 'ready' || sandbox.status === 'stopped' || sandbox.status === 'unhealthy');
 }
 
 function externalThreadKey(source: string, externalId: string): string {

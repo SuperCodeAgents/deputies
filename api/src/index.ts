@@ -8,6 +8,7 @@ import { FlueRunner } from './runner-flue/runner.js';
 import { PostgresFlueSessionStore } from './runner-flue/session-store.js';
 import { DaytonaSandboxProvider } from './sandbox/daytona.js';
 import { FakeSandboxProvider } from './sandbox/fake.js';
+import { startSandboxReaper } from './sandbox/reaper.js';
 import type { SandboxProvider } from './sandbox/types.js';
 import { MemoryStore } from './store/memory.js';
 import { PostgresStore } from './store/postgres.js';
@@ -15,10 +16,12 @@ import { startWorkerLoop, WorkerService } from './worker/service.js';
 
 const config = loadConfig(process.env);
 const store = config.appStore === 'postgres' ? new PostgresStore(requireDatabaseUrl(config)) : new MemoryStore();
-const services = createServices(store);
+const sandboxProvider = createSandboxProvider();
+const services = createServices(store, { sandboxProvider });
 const resources: CloseableResource[] = [];
 let server: ReturnType<typeof createServer> | undefined;
 let workerLoop: ReturnType<typeof startWorkerLoop> | undefined;
+let sandboxReaper: ReturnType<typeof startSandboxReaper> | undefined;
 
 if ('close' in store && typeof store.close === 'function') resources.push(store as CloseableResource);
 
@@ -35,10 +38,18 @@ if (config.runMode === 'all' || config.runMode === 'worker') {
     events: services.events,
     runner: createRunner(),
     runnerType: config.runner,
-    sandboxProvider: createSandboxProvider(),
+    sandboxProvider,
     leaseOwner: `worker-${process.pid}`,
   });
   workerLoop = startWorkerLoop(worker);
+  if (services.sandboxCleanup) {
+    sandboxReaper = startSandboxReaper({
+      cleanup: services.sandboxCleanup,
+      store,
+      retentionMs: config.sandboxRetentionSeconds * 1000,
+      onError: (error: unknown) => console.error(error instanceof Error ? error.message : error),
+    });
+  }
   console.log(`background-agent worker started (${config.runMode})`);
 }
 
@@ -48,6 +59,7 @@ const lifecycleOptions = {
 };
 if (server) Object.assign(lifecycleOptions, { server });
 if (workerLoop) Object.assign(lifecycleOptions, { workerLoop });
+if (sandboxReaper) resources.unshift(sandboxReaper);
 installProcessShutdownHandlers(new AppLifecycle(lifecycleOptions));
 
 function createSandboxProvider(): SandboxProvider {

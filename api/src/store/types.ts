@@ -220,6 +220,8 @@ export interface AppStore {
   failRun(input: { runId: string; failedAt: Date; error: string }): Promise<ClaimedMessage>;
 
   getActiveSandbox(sessionId: string, provider: string): Promise<SandboxRecord | null>;
+  listActiveSandboxes(sessionId: string, provider: string): Promise<SandboxRecord[]>;
+  listIdleSandboxes(input: { provider: string; idleBefore: Date; limit: number }): Promise<SandboxRecord[]>;
   createSandbox(record: CreateSandboxRecord): Promise<SandboxRecord>;
   updateSandbox(record: SandboxRecord): Promise<SandboxRecord>;
 

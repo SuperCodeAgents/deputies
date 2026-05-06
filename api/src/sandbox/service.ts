@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { EventService } from '../events/service.js';
 import type { AppStore, SandboxRecord } from '../store/types.js';
 import type { SandboxHandle, SandboxProvider } from './types.js';
 
@@ -78,5 +79,75 @@ export class SandboxLifecycleService {
       });
       return null;
     }
+  }
+}
+
+export type SandboxCleanupResult = {
+  destroyed: number;
+  failed: number;
+};
+
+export class SandboxCleanupService {
+  constructor(
+    private readonly store: AppStore,
+    private readonly events: EventService,
+    private readonly provider: SandboxProvider,
+  ) {}
+
+  async destroySessionSandboxes(sessionId: string): Promise<SandboxCleanupResult> {
+    const sandboxes = await this.store.listActiveSandboxes(sessionId, this.provider.name);
+    return this.destroySandboxes(sandboxes, 'archive');
+  }
+
+  async destroyIdleSandboxes(input: { idleBefore: Date; limit: number }): Promise<SandboxCleanupResult> {
+    const sandboxes = await this.store.listIdleSandboxes({
+      provider: this.provider.name,
+      idleBefore: input.idleBefore,
+      limit: input.limit,
+    });
+    return this.destroySandboxes(sandboxes, 'idle_reaper');
+  }
+
+  private async destroySandboxes(sandboxes: SandboxRecord[], reason: string): Promise<SandboxCleanupResult> {
+    let destroyed = 0;
+    let failed = 0;
+
+    for (const sandbox of sandboxes) {
+      try {
+        await this.provider.destroy(sandbox);
+        const destroyedAt = new Date();
+        await this.store.updateSandbox({
+          ...sandbox,
+          status: 'destroyed',
+          updatedAt: destroyedAt,
+          destroyedAt,
+        });
+        await this.events.append({
+          sessionId: sandbox.sessionId,
+          type: 'sandbox_destroyed',
+          payload: {
+            reason,
+            provider: sandbox.provider,
+            providerSandboxId: sandbox.providerSandboxId,
+          },
+        });
+        destroyed += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown sandbox destroy error';
+        await this.events.append({
+          sessionId: sandbox.sessionId,
+          type: 'sandbox_destroy_failed',
+          payload: {
+            reason,
+            provider: sandbox.provider,
+            providerSandboxId: sandbox.providerSandboxId,
+            error: message,
+          },
+        });
+        failed += 1;
+      }
+    }
+
+    return { destroyed, failed };
   }
 }

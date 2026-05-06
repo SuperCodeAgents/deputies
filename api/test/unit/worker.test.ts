@@ -1,6 +1,8 @@
 import { createServices } from '../../src/app/server.js';
 import { FakeRunner } from '../../src/runner/fake.js';
 import { FakeSandboxProvider } from '../../src/sandbox/fake.js';
+import { runSandboxReaperOnce } from '../../src/sandbox/reaper.js';
+import { SandboxCleanupService } from '../../src/sandbox/service.js';
 import { MemoryStore } from '../../src/store/memory.js';
 import { startWorkerLoop, WorkerService } from '../../src/worker/service.js';
 
@@ -126,6 +128,60 @@ describe('WorkerService', () => {
     await stopped;
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(calls).toBe(1);
+  });
+
+  it('reaps idle sandboxes without archiving sessions', async () => {
+    const store = new MemoryStore();
+    const services = createServices(store);
+    const provider = new FakeSandboxProvider();
+    const session = await services.sessions.create({ title: 'Idle sandbox' });
+    const old = new Date(Date.now() - 120_000);
+    await store.createSandbox({
+      id: '00000000-0000-4000-8000-000000000601',
+      sessionId: session.id,
+      provider: provider.name,
+      providerSandboxId: `fake-${session.id}`,
+      status: 'stopped',
+      workspacePath: '/workspace',
+      metadata: {},
+      createdAt: old,
+      updatedAt: old,
+    });
+
+    const destroyed = await runSandboxReaperOnce({
+      cleanup: new SandboxCleanupService(store, services.events, provider),
+      store,
+      retentionMs: 60_000,
+    });
+
+    expect(destroyed).toBe(1);
+    expect(provider.destroys).toBe(1);
+    await expect(store.getActiveSandbox(session.id, provider.name)).resolves.toBeNull();
+    await expect(services.sessions.get(session.id)).resolves.toMatchObject({ status: 'created' });
+    const events = await services.events.list(session.id);
+    expect(events.map((event) => event.type)).toEqual(['session_created', 'sandbox_destroyed']);
+  });
+
+  it('skips the sandbox reaper when another postgres advisory lock holder is active', async () => {
+    let cleanupCalled = false;
+
+    const destroyed = await runSandboxReaperOnce({
+      cleanup: {
+        async destroyIdleSandboxes() {
+          cleanupCalled = true;
+          return { destroyed: 1, failed: 0 };
+        },
+      } as unknown as SandboxCleanupService,
+      store: {
+        async withAdvisoryLock() {
+          return null;
+        },
+      },
+      retentionMs: 60_000,
+    });
+
+    expect(destroyed).toBe(0);
+    expect(cleanupCalled).toBe(false);
   });
 });
 

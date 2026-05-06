@@ -18,6 +18,8 @@ export type NormalizedEventType =
   | 'run_started'
   | 'sandbox_starting'
   | 'sandbox_ready'
+  | 'sandbox_destroyed'
+  | 'sandbox_destroy_failed'
   | 'agent_text_delta'
   | 'tool_started'
   | 'tool_finished'

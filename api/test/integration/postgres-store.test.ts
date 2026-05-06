@@ -120,6 +120,8 @@ describe.skipIf(!testDatabaseUrl)('PostgresStore', () => {
       status: 'ready',
       metadata: { target: 'test' },
     });
+    await expect(store.listActiveSandboxes(session.id, 'fake')).resolves.toMatchObject([{ id: created.id }]);
+    await expect(store.listIdleSandboxes({ provider: 'fake', idleBefore: new Date(now.getTime() + 1_000), limit: 10 })).resolves.toMatchObject([{ id: created.id }]);
 
     const checkedAt = new Date(now.getTime() + 1_000);
     await store.updateSandbox({
@@ -150,6 +152,21 @@ describe.skipIf(!testDatabaseUrl)('PostgresStore', () => {
       updatedAt: checkedAt,
     });
     await expect(store.getActiveSandbox(session.id, 'fake')).resolves.toBeNull();
+    await expect(store.listIdleSandboxes({ provider: 'fake', idleBefore: new Date(now.getTime() + 3_000), limit: 10 })).resolves.toEqual([]);
+  });
+
+  it('runs postgres advisory locks on only one holder', async () => {
+    const locked = await store.withAdvisoryLock(12345, async () => {
+      const competing = new PostgresStore(testDatabaseUrl!);
+      try {
+        return competing.withAdvisoryLock(12345, async () => 'competing');
+      } finally {
+        await competing.close();
+      }
+    });
+
+    expect(locked).toBeNull();
+    await expect(store.withAdvisoryLock(12345, async () => 'released')).resolves.toBe('released');
   });
 
   it('persists artifacts and callback deliveries', async () => {

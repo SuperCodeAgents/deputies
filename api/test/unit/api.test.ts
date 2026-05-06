@@ -1,6 +1,7 @@
 import type { Server } from 'node:http';
 import { createServer, createServices } from '../../src/app/server.js';
 import { loadConfig } from '../../src/config/index.js';
+import { FakeSandboxProvider } from '../../src/sandbox/fake.js';
 import { MemoryStore } from '../../src/store/memory.js';
 import {
   expectArtifactsResponse,
@@ -162,6 +163,38 @@ describe('core API', () => {
     const eventsBody = await eventsResponse.json();
     expectEventsResponse(eventsBody);
     expect(eventsBody.events.map((event) => event.type)).toEqual(['session_created', 'session_archived']);
+  });
+
+  it('destroys active session sandboxes when archiving', async () => {
+    await closeServer(server);
+    const provider = new FakeSandboxProvider();
+    server = createServer(loadConfig({}), createServices(store, { sandboxProvider: provider }));
+    baseUrl = await listen(server);
+
+    const createSession = await postJson(`${baseUrl}/sessions`, { title: 'Archive sandbox' });
+    const { session } = (await createSession.json()) as { session: { id: string } };
+    const now = new Date();
+    await store.createSandbox({
+      id: '00000000-0000-4000-8000-000000000501',
+      sessionId: session.id,
+      provider: provider.name,
+      providerSandboxId: `fake-${session.id}`,
+      status: 'ready',
+      workspacePath: '/workspace',
+      metadata: {},
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const archiveSession = await postJson(`${baseUrl}/sessions/${session.id}/archive`, {});
+
+    expect(archiveSession.status).toBe(200);
+    expect(provider.destroys).toBe(1);
+    await expect(store.getActiveSandbox(session.id, provider.name)).resolves.toBeNull();
+
+    const eventsResponse = await fetch(`${baseUrl}/sessions/${session.id}/events`);
+    const eventsBody = (await eventsResponse.json()) as { events: Array<{ type: string }> };
+    expect(eventsBody.events.map((event: { type: string }) => event.type)).toEqual(['session_created', 'session_archived', 'sandbox_destroyed']);
   });
 
   it('unarchives a session', async () => {

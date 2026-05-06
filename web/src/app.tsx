@@ -286,8 +286,10 @@ export function App() {
 
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
-      {authRequired && !token ? <AuthPanel draftToken={draftToken} setDraftToken={setDraftToken} saveToken={saveToken} /> : null}
       {error ? <div className="border-b border-red-900/60 bg-red-950/40 px-4 py-2 text-sm text-red-200">{error}</div> : null}
+
+      {authRequired && !token ? <AuthPanel draftToken={draftToken} setDraftToken={setDraftToken} saveToken={saveToken} /> : (
+        <>
 
       {!sidebarCollapsed && !sidebarOpen ? (
         <Button className="fixed left-3 top-3 z-30 h-9 w-9 p-0 shadow-xl md:hidden" variant="secondary" size="icon" onClick={() => setSidebarOpen(true)} aria-label="Open sessions" title="Open sessions">
@@ -388,6 +390,8 @@ export function App() {
           )}
         </section>
       </section>
+        </>
+      )}
     </main>
   );
 }
@@ -411,6 +415,8 @@ function ThreadSidebar(props: {
   onSignOut: () => void;
   onUnarchive: (sessionId: string) => void;
 }) {
+  const searching = Boolean(props.search.trim());
+
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       <div className="mb-3 flex shrink-0 items-center gap-2">
@@ -436,12 +442,14 @@ function ThreadSidebar(props: {
           ))}
           {!props.activeSessions.length ? <p className="px-2 py-3 text-sm text-slate-500">{props.search ? 'No matching active sessions.' : 'No active sessions.'}</p> : null}
         </div>
-        {props.archivedSessions.length ? (
-          <details className="mt-4 border-t border-slate-800 pt-3">
+        {props.archivedSessions.length || searching ? (
+          <details className="mt-4 border-t border-slate-800 pt-3" open={searching ? true : undefined}>
             <summary className="flex cursor-pointer items-center gap-1 text-sm font-medium text-slate-400"><ChevronDown className="h-4 w-4" /> Archived · {props.archivedSessions.length}</summary>
-            <div className="mt-2 grid min-w-0 gap-1 opacity-80">
-              {props.archivedSessions.map((session) => <SessionButton key={session.id} session={session} selected={session.id === props.selectedSessionId} onSelect={props.onSelect} onUnarchive={props.onUnarchive} />)}
-            </div>
+            {props.archivedSessions.length ? (
+              <div className="mt-2 grid min-w-0 gap-1 opacity-80">
+                {props.archivedSessions.map((session) => <SessionButton key={session.id} session={session} selected={session.id === props.selectedSessionId} onSelect={props.onSelect} onUnarchive={props.onUnarchive} />)}
+              </div>
+            ) : <p className="px-2 py-3 text-sm text-slate-500">No matching archived sessions.</p>}
           </details>
         ) : null}
       </div>
@@ -485,14 +493,23 @@ function SessionButton(props: {
 
 function AuthPanel(props: { draftToken: string; setDraftToken: (value: string) => void; saveToken: (event: FormEvent) => void }) {
   return (
-    <form className="grid gap-3 border-b border-slate-800 bg-slate-900/80 p-4 md:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)_auto] md:items-center" onSubmit={props.saveToken}>
-      <div>
-        <strong>API token required</strong>
-        <p className="text-sm text-slate-400">Enter the backend bearer token. It stays in this browser's local storage.</p>
-      </div>
-      <Input type="password" value={props.draftToken} onChange={(event) => props.setDraftToken(event.target.value)} placeholder="Bearer token" />
-      <Button type="submit">Use token</Button>
-    </form>
+    <section className="grid min-h-screen place-items-center px-4">
+      <Card className="w-full max-w-2xl p-5">
+        <p className="text-xs font-semibold uppercase tracking-widest text-sky-300">DevOps Deputies</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-50">Your async engineering deputies.</h1>
+        <p className="mt-2 text-sm text-slate-400">Delegate follow-ups, watch the work trail, and inspect the results.</p>
+        <form className="mt-6 grid gap-3" onSubmit={props.saveToken}>
+          <div>
+            <strong>API token required</strong>
+            <p className="text-sm text-slate-400">Enter the backend bearer token. It stays in this browser's local storage.</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <Input type="password" value={props.draftToken} onChange={(event) => props.setDraftToken(event.target.value)} placeholder="Bearer token" />
+            <Button type="submit">Use token</Button>
+          </div>
+        </form>
+      </Card>
+    </section>
   );
 }
 

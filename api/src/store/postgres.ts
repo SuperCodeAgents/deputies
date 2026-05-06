@@ -161,6 +161,21 @@ export class PostgresStore implements AppStore {
     await this.pool.end();
   }
 
+  async withAdvisoryLock<T>(lockId: number, fn: () => Promise<T>): Promise<T | null> {
+    const client = await this.pool.connect();
+    try {
+      const lock = await client.query<{ acquired: boolean }>('SELECT pg_try_advisory_lock($1) AS acquired', [lockId]);
+      if (!lock.rows[0]?.acquired) return null;
+      try {
+        return await fn();
+      } finally {
+        await client.query('SELECT pg_advisory_unlock($1)', [lockId]);
+      }
+    } finally {
+      client.release();
+    }
+  }
+
   async createSession(record: CreateSessionRecord): Promise<SessionRecord> {
     const result = await this.pool.query<SessionRow>(
       `INSERT INTO sessions (id, status, title, created_at, updated_at)
@@ -371,6 +386,10 @@ export class PostgresStore implements AppStore {
   }
 
   async getActiveSandbox(sessionId: string, provider: string): Promise<SandboxRecord | null> {
+    return (await this.listActiveSandboxes(sessionId, provider))[0] ?? null;
+  }
+
+  async listActiveSandboxes(sessionId: string, provider: string): Promise<SandboxRecord[]> {
     const result = await this.pool.query<SandboxRow>(
       `SELECT id, session_id, provider, provider_sandbox_id, status, workspace_path, metadata,
               created_at, updated_at, last_health_check_at, destroyed_at
@@ -379,12 +398,29 @@ export class PostgresStore implements AppStore {
          AND provider = $2
          AND destroyed_at IS NULL
          AND status IN ('ready', 'stopped', 'unhealthy')
-       ORDER BY updated_at DESC
-       LIMIT 1`,
+        ORDER BY updated_at DESC
+       `,
       [sessionId, provider],
     );
-    const row = result.rows[0];
-    return row ? toSandbox(row) : null;
+    return result.rows.map(toSandbox);
+  }
+
+  async listIdleSandboxes(input: { provider: string; idleBefore: Date; limit: number }): Promise<SandboxRecord[]> {
+    const result = await this.pool.query<SandboxRow>(
+      `SELECT sb.id, sb.session_id, sb.provider, sb.provider_sandbox_id, sb.status, sb.workspace_path, sb.metadata,
+              sb.created_at, sb.updated_at, sb.last_health_check_at, sb.destroyed_at
+       FROM sandboxes sb
+       JOIN sessions s ON s.id = sb.session_id
+       WHERE sb.provider = $1
+         AND sb.destroyed_at IS NULL
+         AND sb.status IN ('ready', 'stopped', 'unhealthy')
+         AND sb.updated_at <= $2
+         AND s.status <> 'active'
+       ORDER BY sb.updated_at ASC
+       LIMIT $3`,
+      [input.provider, input.idleBefore, input.limit],
+    );
+    return result.rows.map(toSandbox);
   }
 
   async createSandbox(record: CreateSandboxRecord): Promise<SandboxRecord> {

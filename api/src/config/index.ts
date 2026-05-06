@@ -8,6 +8,7 @@ export type AppConfig = {
   port: number;
   maxJsonBodyBytes: number;
   sandboxIdleTimeoutSeconds: number;
+  sandboxRetentionSeconds: number;
   runMode: RunMode;
   runner: RunnerKind;
   sandboxProvider: SandboxProviderKind;
@@ -29,6 +30,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     port: parsePort(env.PORT),
     maxJsonBodyBytes: parsePositiveInteger(env.MAX_JSON_BODY_BYTES, 1_048_576, 'MAX_JSON_BODY_BYTES'),
     sandboxIdleTimeoutSeconds: parsePositiveInteger(env.SANDBOX_IDLE_TIMEOUT_SECONDS, 900, 'SANDBOX_IDLE_TIMEOUT_SECONDS'),
+    sandboxRetentionSeconds: parsePositiveInteger(env.SANDBOX_RETENTION_SECONDS, 3600, 'SANDBOX_RETENTION_SECONDS'),
     runMode: parseEnum(env.RUN_MODE, ['all', 'api', 'worker'], 'all'),
     runner: parseEnum(env.RUNNER, ['fake', 'flue'], 'fake'),
     sandboxProvider: parseEnum(

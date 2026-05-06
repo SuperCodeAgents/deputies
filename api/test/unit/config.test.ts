@@ -6,6 +6,7 @@ describe('loadConfig', () => {
       port: 3583,
       maxJsonBodyBytes: 1048576,
       sandboxIdleTimeoutSeconds: 900,
+      sandboxRetentionSeconds: 3600,
       runMode: 'all',
       runner: 'fake',
       sandboxProvider: 'fake',
@@ -21,6 +22,7 @@ describe('loadConfig', () => {
         PORT: '4000',
         MAX_JSON_BODY_BYTES: '2048',
         SANDBOX_IDLE_TIMEOUT_SECONDS: '120',
+        SANDBOX_RETENTION_SECONDS: '240',
         RUN_MODE: 'worker',
         RUNNER: 'flue',
         SANDBOX_PROVIDER: 'kubernetes',
@@ -39,6 +41,7 @@ describe('loadConfig', () => {
       port: 4000,
       maxJsonBodyBytes: 2048,
       sandboxIdleTimeoutSeconds: 120,
+      sandboxRetentionSeconds: 240,
       runMode: 'worker',
       runner: 'flue',
       sandboxProvider: 'kubernetes',
@@ -65,6 +68,10 @@ describe('loadConfig', () => {
 
   it('rejects invalid sandbox idle timeout', () => {
     expect(() => loadConfig({ SANDBOX_IDLE_TIMEOUT_SECONDS: '0' })).toThrow('SANDBOX_IDLE_TIMEOUT_SECONDS must be a positive integer');
+  });
+
+  it('rejects invalid sandbox retention', () => {
+    expect(() => loadConfig({ SANDBOX_RETENTION_SECONDS: '0' })).toThrow('SANDBOX_RETENTION_SECONDS must be a positive integer');
   });
 
   it('rejects invalid enum values', () => {
