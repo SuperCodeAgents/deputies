@@ -12,6 +12,8 @@
     "db:down": "docker compose down",
     "api:db:migrate": "pnpm --dir api db:migrate",
     "api:dev": "pnpm --dir api dev",
+    "api:emulate:slack": "pnpm --dir api emulate:slack",
+    "api:portless:start": "pnpm --dir api portless:start",
     "api:start": "pnpm --dir api start",
     "api:build": "pnpm --dir api build",
     "api:typecheck": "pnpm --dir api typecheck",

@@ -32,6 +32,9 @@ importers:
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.0
+      emulate:
+        specifier: ^0.5.0
+        version: 0.5.0(hono@4.12.17)
       tsx:
         specifier: ^4.19.2
         version: 4.21.0
@@ -2014,6 +2017,10 @@ packages:
     resolution: {integrity: sha512-FQN4MRfuJeHf7cBbBMJFXhKSDq+2kAArBlmRBvcvFE5BB1HZKXtSFASDhdlz9zOYwxh8lDdnvmMOe/+5cdoEdg==}
     engines: {node: '>= 0.8'}
 
+  commander@14.0.3:
+    resolution: {integrity: sha512-H+y0Jo/T1RZ9qPP4Eh1pkcQcLRglraJaSLoyOtHxu6AapkjWVCy2Sit1QQ4x3Dng8qDlSsZEet7g5Pq06MvTgw==}
+    engines: {node: '>=20'}
+
   commander@6.2.1:
     resolution: {integrity: sha512-U7VdrJFnJgo4xjrHpTzu0yrHPGImdsmD95ZlgYSEajAn2JKzDhDTPG9kBTefmObL2w/ngeZnilk+OV9CG3d7UA==}
     engines: {node: '>= 6'}
@@ -2148,6 +2155,10 @@ packages:
 
   emoji-regex@8.0.0:
     resolution: {integrity: sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==}
+
+  emulate@0.5.0:
+    resolution: {integrity: sha512-2LrOE8sqa1ITQ1aRR3kZhAhOCNz8hu+Kea9oBKdG/jEK6I/RYlMgHbsvQmbTTtr+nx6+fOOWkL6wqvfLeF5vuA==}
+    hasBin: true
 
   encodeurl@2.0.0:
     resolution: {integrity: sha512-Q0n9HRi4m6JuGIV1eFlmvJB7ZEVxu93IrMyiMsGC0lrMJMWzRgx6WGquyfQgZVb31vhGgXnfmPNNXmxnOkRBrg==}
@@ -5978,6 +5989,8 @@ snapshots:
     dependencies:
       delayed-stream: 1.0.0
 
+  commander@14.0.3: {}
+
   commander@6.2.1: {}
 
   content-disposition@1.1.0: {}
@@ -6081,6 +6094,15 @@ snapshots:
   electron-to-chromium@1.5.349: {}
 
   emoji-regex@8.0.0: {}
+
+  emulate@0.5.0(hono@4.12.17):
+    dependencies:
+      '@hono/node-server': 1.19.14(hono@4.12.17)
+      commander: 14.0.3
+      picocolors: 1.1.1
+      yaml: 2.8.4
+    transitivePeerDependencies:
+      - hono
 
   encodeurl@2.0.0: {}
 

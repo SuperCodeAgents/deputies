@@ -16,6 +16,7 @@ describe('loadConfig', () => {
       apiAuthMode: 'none',
       authCookieSecure: false,
       flueSessionStore: 'postgres',
+      slackApiBaseUrl: 'https://slack.com/api',
     });
   });
 
@@ -45,6 +46,10 @@ describe('loadConfig', () => {
         DAYTONA_API_URL: 'https://daytona.example',
         DAYTONA_TARGET: 'eu',
         DAYTONA_IMAGE: 'ubuntu:latest',
+        DAYTONA_SNAPSHOT: 'snap-1',
+        SLACK_API_BASE_URL: 'https://slack.emulate.localhost/api',
+        SLACK_SIGNING_SECRET: 'slack-secret',
+        SLACK_BOT_TOKEN: 'xoxb-token',
       }),
     ).toMatchObject({
       port: 4000,
@@ -70,6 +75,10 @@ describe('loadConfig', () => {
       daytonaApiUrl: 'https://daytona.example',
       daytonaTarget: 'eu',
       daytonaImage: 'ubuntu:latest',
+      daytonaSnapshot: 'snap-1',
+      slackApiBaseUrl: 'https://slack.emulate.localhost/api',
+      slackSigningSecret: 'slack-secret',
+      slackBotToken: 'xoxb-token',
     });
   });
 

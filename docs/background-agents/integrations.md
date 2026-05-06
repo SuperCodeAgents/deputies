@@ -175,11 +175,13 @@ Testing should use `vercel-labs/emulate` GitHub service:
 
 ## Slack Integration
 
+See [Slack Testing](./slack-testing.md) for real Slack, tunnel, and emulate workflows.
+
 Supported triggers:
 
 - App mentions.
-- Direct messages.
 - Thread follow-ups.
+- Direct messages later.
 
 Inbound responsibilities:
 
@@ -188,8 +190,10 @@ Inbound responsibilities:
 - Dedupe by Slack event ID.
 - Ignore bot/self events.
 - Resolve Slack thread to session.
+- Strip the bot mention from app mention prompts.
+- Wrap Slack text as untrusted content in the product prompt.
 - Resolve repo from explicit syntax, defaults, or classifier later.
-- Fetch thread history when useful.
+- Fetch thread history when useful later.
 
 External thread ID:
 
@@ -210,6 +214,31 @@ Testing should use `vercel-labs/emulate` Slack service:
 - Post messages and thread replies through emulated Slack APIs.
 - Send app mention payloads to the app.
 - Assert callback messages are visible in the emulated thread.
+
+Current implementation:
+
+- `POST /webhooks/slack/events` handles Slack Events API payloads.
+- `url_verification` returns the Slack challenge after signature verification.
+- `app_mention` creates or reuses a session keyed by `team_id:channel:thread_ts`.
+- `message` events are accepted only as thread follow-ups, not as new top-level sessions.
+- Duplicate `event_id` values are ignored through `integration_deliveries`.
+- Bot messages are ignored to prevent loops.
+- `api/src/integrations/slack` owns Slack auth, types, prompts, client helpers, and service orchestration. It must not import runners, sandboxes, or Flue.
+
+Local HTTPS emulation:
+
+```sh
+portless proxy start
+pnpm dlx emulate start --service slack --portless
+```
+
+Then point Slack client config at:
+
+```txt
+SLACK_API_BASE_URL=https://slack.emulate.localhost/api
+```
+
+Automated tests should prefer the programmatic `createEmulator({ service: 'slack' })` API. Do not add emulate to Docker Compose by default; Compose remains for infrastructure dependencies such as Postgres.
 
 ## Linear Integration
 

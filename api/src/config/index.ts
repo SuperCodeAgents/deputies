@@ -29,6 +29,9 @@ export type AppConfig = {
   daytonaTarget?: string;
   daytonaImage?: string;
   daytonaSnapshot?: string;
+  slackApiBaseUrl: string;
+  slackSigningSecret?: string;
+  slackBotToken?: string;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
@@ -50,6 +53,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     apiAuthMode: parseEnum(env.API_AUTH_MODE, ['none', 'bearer', 'session'], 'none'),
     authCookieSecure: parseBoolean(env.AUTH_COOKIE_SECURE, false, 'AUTH_COOKIE_SECURE'),
     flueSessionStore: parseEnum(env.FLUE_SESSION_STORE, ['postgres', 'memory'], 'postgres'),
+    slackApiBaseUrl: env.SLACK_API_BASE_URL ?? 'https://slack.com/api',
   };
 
   if (env.API_BEARER_TOKEN) config.apiBearerToken = env.API_BEARER_TOKEN;
@@ -63,6 +67,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   if (env.DAYTONA_TARGET) config.daytonaTarget = env.DAYTONA_TARGET;
   if (env.DAYTONA_IMAGE) config.daytonaImage = env.DAYTONA_IMAGE;
   if (env.DAYTONA_SNAPSHOT) config.daytonaSnapshot = env.DAYTONA_SNAPSHOT;
+  if (env.SLACK_SIGNING_SECRET) config.slackSigningSecret = env.SLACK_SIGNING_SECRET;
+  if (env.SLACK_BOT_TOKEN) config.slackBotToken = env.SLACK_BOT_TOKEN;
 
   return config;
 }
@@ -113,6 +119,14 @@ export function requireDatabaseUrl(config: AppConfig): string {
   }
 
   return config.databaseUrl;
+}
+
+export function requireSlackSigningSecret(config: AppConfig): string {
+  if (!config.slackSigningSecret) {
+    throw new Error('SLACK_SIGNING_SECRET is required for Slack webhooks');
+  }
+
+  return config.slackSigningSecret;
 }
 
 function parsePort(value: string | undefined): number {

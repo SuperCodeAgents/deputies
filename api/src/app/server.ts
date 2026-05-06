@@ -6,9 +6,12 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
 import { apiAuthMiddleware } from '../auth/middleware.js';
 import { clearSessionCookie, createSessionCookie, readSession } from '../auth/session.js';
-import { requireAuthSessionSecret, requireStaticCredentials, type AppConfig } from '../config/index.js';
+import { requireAuthSessionSecret, requireSlackSigningSecret, requireStaticCredentials, type AppConfig } from '../config/index.js';
 import { EventService } from '../events/service.js';
 import { GenericWebhookError, GenericWebhookService } from '../integrations/generic-webhook/service.js';
+import { verifySlackSignature } from '../integrations/slack/auth.js';
+import { SlackIntegrationError, SlackIntegrationService } from '../integrations/slack/service.js';
+import type { SlackEventEnvelope } from '../integrations/slack/types.js';
 import { MessageService, MessageServiceError } from '../messages/service.js';
 import { SandboxCleanupService } from '../sandbox/service.js';
 import type { SandboxProvider } from '../sandbox/types.js';
@@ -120,6 +123,34 @@ export function createApp(config: AppConfig, services = createServices()) {
         const status = error.code === 'unauthorized' ? 401 : error.code === 'not_found' ? 404 : 400;
         return writeError(c, status, error.code, error.message);
       }
+      throw error;
+    }
+  });
+
+  app.post('/webhooks/slack/events', async (c) => {
+    const body = await readRawBody(c, config.maxJsonBodyBytes, 'Slack body');
+    const signingSecret = requireSlackSigningSecret(config);
+    const signatureValid = verifySlackSignature({
+      signature: c.req.header('x-slack-signature'),
+      timestamp: c.req.header('x-slack-request-timestamp'),
+      body,
+      signingSecret,
+    });
+    if (!signatureValid) return writeError(c, 401, 'unauthorized', 'Invalid Slack signature');
+
+    let payload: SlackEventEnvelope;
+    try {
+      payload = JSON.parse(body) as SlackEventEnvelope;
+    } catch {
+      return writeError(c, 400, 'invalid_json', 'Expected valid Slack JSON payload');
+    }
+
+    try {
+      const result = await new SlackIntegrationService(services.store, services.sessions, services.messages).handle(payload);
+      if (result.type === 'challenge') return c.json({ challenge: result.challenge });
+      return c.json({ ok: true, type: result.type });
+    } catch (error) {
+      if (error instanceof SlackIntegrationError) return writeError(c, 400, error.code, error.message);
       throw error;
     }
   });
@@ -356,10 +387,7 @@ async function writeEventStream(
 }
 
 async function readJsonBody(c: Context, maxBytes: number): Promise<Record<string, unknown>> {
-  const text = await c.req.text();
-  if (Buffer.byteLength(text, 'utf8') > maxBytes) {
-    throw new HttpRequestError(413, 'payload_too_large', `JSON body exceeds ${maxBytes} bytes`);
-  }
+  const text = await readRawBody(c, maxBytes, 'JSON body');
 
   const trimmed = text.trim();
   if (!trimmed) return {};
@@ -375,6 +403,14 @@ async function readJsonBody(c: Context, maxBytes: number): Promise<Record<string
   }
 
   return value as Record<string, unknown>;
+}
+
+async function readRawBody(c: Context, maxBytes: number, label: string): Promise<string> {
+  const text = await c.req.text();
+  if (Buffer.byteLength(text, 'utf8') > maxBytes) {
+    throw new HttpRequestError(413, 'payload_too_large', `${label} exceeds ${maxBytes} bytes`);
+  }
+  return text;
 }
 
 class HttpRequestError extends Error {
