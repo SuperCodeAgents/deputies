@@ -161,6 +161,25 @@ Repository-scoped messages can carry context in either shape:
 { "github": { "repository": { "owner": "owner", "repo": "repo" } } }
 ```
 
+Future multi-repository context should distinguish repository roles instead of treating every cloned repo as equally writable:
+
+```json
+{
+  "repositories": [
+    { "provider": "github", "owner": "org", "repo": "app", "role": "primary", "writable": true },
+    { "provider": "github", "owner": "org", "repo": "shared-lib", "role": "auxiliary", "writable": false }
+  ]
+}
+```
+
+Planned semantics:
+
+- Exactly one `primary` repository is the default `cwd`, branch target, and expected edit location for normal tasks.
+- `auxiliary` repositories are cloned as sibling worktrees for context/reference and are read-only by default.
+- A task that intentionally spans multiple repositories should mark each modified repo as `writable: true`; each writable repo should get its own branch/PR artifact plus a summary artifact linking the PR set.
+- Snapshot/image baking can pre-populate common primary and auxiliary repositories, but startup refresh still verifies each requested worktree exists and is current enough for the run.
+- Prompt context should list each repository role and sandbox path so the agent knows which repo is safe to modify.
+
 Supported triggers:
 
 - Issue comments mentioning the agent.
