@@ -22,6 +22,7 @@ describe('loadConfig', () => {
       slackAllowedChannelIds: [],
       slackAllowedUserIds: [],
       githubApiBaseUrl: 'https://api.github.com',
+      githubCloneBaseUrl: 'https://github.com',
       githubAllowedRepositories: [],
     });
   });
@@ -60,6 +61,7 @@ describe('loadConfig', () => {
         SLACK_ALLOWED_CHANNEL_IDS: 'C123,C456',
         SLACK_ALLOWED_USER_IDS: 'U123, U456',
         GITHUB_API_BASE_URL: 'https://github.emulate.localhost/api',
+        GITHUB_CLONE_BASE_URL: 'https://github.emulate.localhost',
         GITHUB_APP_ID: '12345',
         GITHUB_APP_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nkey\\n-----END PRIVATE KEY-----',
         GITHUB_WEBHOOK_SECRET: 'github-secret',
@@ -98,6 +100,7 @@ describe('loadConfig', () => {
       slackAllowedChannelIds: ['C123', 'C456'],
       slackAllowedUserIds: ['U123', 'U456'],
       githubApiBaseUrl: 'https://github.emulate.localhost/api',
+      githubCloneBaseUrl: 'https://github.emulate.localhost',
       githubAppId: '12345',
       githubAppPrivateKey: '-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----',
       githubWebhookSecret: 'github-secret',

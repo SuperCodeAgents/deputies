@@ -36,6 +36,19 @@ describe('GitHub App runtime access', () => {
     expect(client.tokenRequests).toEqual([9001]);
   });
 
+  it('uses a custom clone base URL when configured', async () => {
+    const service = new GitHubRepositoryAccessService({
+      appId: '12345',
+      privateKey: testPrivateKey(),
+      client: new FakeGitHubClient() as unknown as GitHubClient,
+      cloneBaseUrl: 'https://github.example.test/',
+    });
+
+    await expect(service.getRepositoryAccess({ owner: 'acme', repo: 'widget' })).resolves.toMatchObject({
+      cloneUrl: 'https://github.example.test/acme/widget.git',
+    });
+  });
+
   it('refreshes installation tokens near expiry', async () => {
     const client = new FakeGitHubClient();
     let now = new Date('2026-05-06T12:00:00.000Z');

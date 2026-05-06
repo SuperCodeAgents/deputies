@@ -62,9 +62,11 @@ export function App() {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [callbacks, setCallbacks] = useState<CallbackDelivery[]>([]);
   const [newThreadPrompt, setNewThreadPrompt] = useState('');
+  const [newThreadRepository, setNewThreadRepository] = useState('');
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const [prompt, setPrompt] = useState('');
+  const [repository, setRepository] = useState('');
   const [editingMessageId, setEditingMessageId] = useState('');
   const [messageDraft, setMessageDraft] = useState('');
   const [draftToken, setDraftToken] = useState(token);
@@ -217,7 +219,13 @@ export function App() {
     setError('');
     try {
       const session = await createSession({ title: titleFromPrompt(firstPrompt), token });
-      const message = await enqueueMessage({ sessionId: session.id, prompt: firstPrompt, token });
+      const firstRepository = newThreadRepository.trim();
+      const message = await enqueueMessage({
+        sessionId: session.id,
+        prompt: firstPrompt,
+        token,
+        ...(firstRepository ? { repository: firstRepository } : {}),
+      });
       setSessions((current) => [session, ...current]);
       selectSession(session.id);
       setMessages([message]);
@@ -226,6 +234,7 @@ export function App() {
       setCallbacks([]);
       eventCursor.current = 0;
       setNewThreadPrompt('');
+      setNewThreadRepository('');
       setIsCreatingThread(false);
     } catch (err) {
       handleApiError(err);
@@ -239,7 +248,13 @@ export function App() {
     if (!selectedSessionId || selectedSessionArchived || !prompt.trim()) return;
     setError('');
     try {
-      const message = await enqueueMessage({ sessionId: selectedSessionId, prompt: prompt.trim(), token });
+      const repositoryInput = repository.trim();
+      const message = await enqueueMessage({
+        sessionId: selectedSessionId,
+        prompt: prompt.trim(),
+        token,
+        ...(repositoryInput ? { repository: repositoryInput } : {}),
+      });
       setMessages((current) => [...current, message]);
       setPrompt('');
       await refreshSessions();
@@ -390,6 +405,7 @@ export function App() {
     setArtifacts([]);
     setCallbacks([]);
     setPrompt('');
+    setRepository('');
     eventCursor.current = 0;
   }
 
@@ -522,13 +538,15 @@ export function App() {
 
         <section className="min-h-0 min-w-0 overflow-hidden">
           {isCreatingThread || !selectedSession ? (
-            <NewThreadPanel
-              canCallApi={canCallApi}
-              loading={loading}
-              prompt={newThreadPrompt}
-              onPromptChange={setNewThreadPrompt}
-              onSubmit={handleCreateThread}
-            />
+              <NewThreadPanel
+                canCallApi={canCallApi}
+                loading={loading}
+                prompt={newThreadPrompt}
+                repository={newThreadRepository}
+                onPromptChange={setNewThreadPrompt}
+                onRepositoryChange={setNewThreadRepository}
+                onSubmit={handleCreateThread}
+              />
           ) : (
             <section className="flex h-full min-h-0 flex-col">
               <ThreadHeader
@@ -570,7 +588,14 @@ export function App() {
                         disabled={selectedSessionArchived}
                       />
                       <div className="flex items-center justify-between border-t border-slate-800 px-3 py-2 text-xs text-slate-500">
-                        <span>{selectedSessionArchived ? 'Archived sessions are read-only until restored.' : 'Enter to send · Shift Enter for newline'}</span>
+                        <Input
+                          className="mr-3 h-8 max-w-64 border-slate-800 bg-slate-950/70 text-xs"
+                          value={repository}
+                          onChange={(event) => setRepository(event.target.value)}
+                          placeholder="GitHub repo, e.g. owner/repo"
+                          disabled={selectedSessionArchived}
+                        />
+                        <span className="min-w-fit">{selectedSessionArchived ? 'Archived sessions are read-only until restored.' : 'Enter to send · Shift Enter for newline'}</span>
                         <Button type="submit" disabled={selectedSessionArchived || !prompt.trim()}>Send message</Button>
                       </div>
                     </Card>
@@ -764,7 +789,9 @@ function NewThreadPanel(props: {
   canCallApi: boolean;
   loading: boolean;
   prompt: string;
+  repository: string;
   onPromptChange: (value: string) => void;
+  onRepositoryChange: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
 }) {
   return (
@@ -775,6 +802,7 @@ function NewThreadPanel(props: {
         <p className="mt-2 text-sm text-slate-400">Delegate follow-ups, watch the work trail, and inspect the results.</p>
         <h2 className="mt-6 text-xl font-semibold">What should your deputy do?</h2>
         <form className="mt-4 grid gap-3" onSubmit={props.onSubmit}>
+          <Input value={props.repository} onChange={(event) => props.onRepositoryChange(event.target.value)} placeholder="GitHub repository, e.g. owner/repo or https://github.com/owner/repo" disabled={!props.canCallApi} />
           <Textarea className="min-h-40" value={props.prompt} onChange={(event) => props.onPromptChange(event.target.value)} onKeyDown={(event) => submitOnEnter(event)} placeholder="Ask your deputy to investigate, change code, or answer a question..." disabled={!props.canCallApi} autoFocus />
           <Button className="justify-self-end" type="submit" disabled={!props.canCallApi || props.loading || !props.prompt.trim()}>Start session</Button>
         </form>

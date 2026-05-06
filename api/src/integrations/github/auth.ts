@@ -1,4 +1,4 @@
-import { createSign } from 'node:crypto';
+import { sign } from 'node:crypto';
 
 export function createGitHubAppJwt(input: { appId: string; privateKey: string; now?: Date }): string {
   const nowSeconds = Math.floor((input.now?.getTime() ?? Date.now()) / 1000);
@@ -9,7 +9,7 @@ export function createGitHubAppJwt(input: { appId: string; privateKey: string; n
     iss: input.appId,
   };
   const unsigned = `${base64UrlJson(header)}.${base64UrlJson(payload)}`;
-  const signature = createSign('RSA-SHA256').update(unsigned).sign(input.privateKey);
+  const signature = sign('RSA-SHA256', Buffer.from(unsigned), input.privateKey);
   return `${unsigned}.${base64Url(signature)}`;
 }
 

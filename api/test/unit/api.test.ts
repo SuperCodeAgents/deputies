@@ -148,6 +148,36 @@ describe('core API', () => {
     expect(replayed.map((event) => event.type)).toEqual(['message_created']);
   });
 
+  it('enqueues messages with validated repository context', async () => {
+    const createSession = await postJson(`${baseUrl}/sessions`, { title: 'Repository session' });
+    const { session } = (await createSession.json()) as { session: { id: string } };
+
+    const createMessage = await postJson(`${baseUrl}/sessions/${session.id}/messages`, {
+      prompt: 'Investigate the failing test',
+      repository: 'manaflow-ai/manaflow',
+    });
+    expect(createMessage.status).toBe(202);
+
+    const body = await createMessage.json();
+    expectMessageResponse(body);
+    expect((body.message as { context?: unknown }).context).toEqual({
+      repository: { provider: 'github', owner: 'manaflow-ai', repo: 'manaflow' },
+    });
+  });
+
+  it('rejects invalid repository context', async () => {
+    const createSession = await postJson(`${baseUrl}/sessions`, { title: 'Repository session' });
+    const { session } = (await createSession.json()) as { session: { id: string } };
+
+    const createMessage = await postJson(`${baseUrl}/sessions/${session.id}/messages`, {
+      prompt: 'Investigate the failing test',
+      repository: 'manaflow',
+    });
+
+    expect(createMessage.status).toBe(400);
+    expectErrorResponse(await createMessage.json());
+  });
+
   it('lists sessions and messages', async () => {
     const createSession = await postJson(`${baseUrl}/sessions`, { title: 'Listed session' });
     const { session } = (await createSession.json()) as { session: { id: string } };

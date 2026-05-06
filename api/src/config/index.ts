@@ -37,6 +37,7 @@ export type AppConfig = {
   slackAllowedChannelIds: string[];
   slackAllowedUserIds: string[];
   githubApiBaseUrl: string;
+  githubCloneBaseUrl: string;
   githubAllowedRepositories: string[];
   githubAppId?: string;
   githubAppPrivateKey?: string;
@@ -68,6 +69,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     slackAllowedChannelIds: parseStringList(env.SLACK_ALLOWED_CHANNEL_IDS),
     slackAllowedUserIds: parseStringList(env.SLACK_ALLOWED_USER_IDS),
     githubApiBaseUrl: env.GITHUB_API_BASE_URL ?? 'https://api.github.com',
+    githubCloneBaseUrl: env.GITHUB_CLONE_BASE_URL ?? 'https://github.com',
     githubAllowedRepositories: parseStringList(env.GITHUB_ALLOWED_REPOSITORIES),
   };
 

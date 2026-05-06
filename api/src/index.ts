@@ -84,6 +84,7 @@ function createRepositoryAccess() {
     github: new GitHubRepositoryAccessService({
       ...credentials,
       client: new GitHubClient({ apiBaseUrl: config.githubApiBaseUrl }),
+      cloneBaseUrl: config.githubCloneBaseUrl,
       allowedRepositories: config.githubAllowedRepositories,
     }),
   };

@@ -137,7 +137,9 @@ else:
 
 GitHub App runtime access should be implemented before inbound GitHub webhooks are treated as production-ready. The webhook path creates sessions and comments, but repo-scoped agent work also needs short-lived installation credentials for clone, fetch, push, branch, PR, and status/comment operations.
 
-Current runtime access support includes GitHub App JWT signing, repository installation lookup, installation token minting, token caching, repository allowlist checks, and sandbox clone/fetch setup from message repository context. The worker passes the cloned repository path to the runner and emits `repository_ready` without token material. Push/branch/PR helper operations are still future work.
+Current runtime access support includes GitHub App JWT signing, repository installation lookup, installation token minting, token caching, repository allowlist checks, configurable clone URL generation through `GITHUB_CLONE_BASE_URL`, and sandbox clone/fetch setup from message repository context. The worker passes the cloned repository path to the runner and emits `repository_ready` without token material. Push/branch/PR helper operations are still future work.
+
+`GITHUB_API_BASE_URL` and `GITHUB_CLONE_BASE_URL` are intentionally separate. The API base points at GitHub's REST API or an emulator; the clone base points at the git remote host used for clone/fetch/push. Defaults are `https://api.github.com` and `https://github.com`.
 
 Repository-scoped messages can carry context in either shape:
 

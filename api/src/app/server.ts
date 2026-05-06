@@ -15,6 +15,7 @@ import { verifySlackSignature } from '../integrations/slack/auth.js';
 import { SlackIntegrationError, SlackIntegrationService } from '../integrations/slack/service.js';
 import type { SlackEventEnvelope } from '../integrations/slack/types.js';
 import { MessageService, MessageServiceError } from '../messages/service.js';
+import { extractRepositoryReference, type RepositoryReference } from '../repositories/extract.js';
 import { SandboxCleanupService } from '../sandbox/service.js';
 import type { SandboxProvider } from '../sandbox/types.js';
 import { SessionService, SessionServiceError } from '../sessions/service.js';
@@ -260,7 +261,12 @@ export function createApp(config: AppConfig, services = createServices()) {
     if (!prompt) return writeError(c, 400, 'invalid_request', 'Expected non-empty string field: prompt');
 
     try {
-      const message = await services.messages.enqueue({ sessionId, prompt });
+      const repository = parseRepositoryBody(body.repository);
+      const message = await services.messages.enqueue({
+        sessionId,
+        prompt,
+        ...(repository ? { context: { repository } } : {}),
+      });
       return c.json({ message }, 202);
     } catch (error) {
       if (error instanceof MessageServiceError && error.code === 'not_found') {
@@ -469,6 +475,30 @@ class HttpRequestError extends Error {
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function parseRepositoryBody(value: unknown): RepositoryReference | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+
+  if (typeof value === 'string') {
+    const reference = extractRepositoryReference(value);
+    if (!reference) throw new HttpRequestError(400, 'invalid_request', 'Expected repository as owner/repo or GitHub URL');
+    return reference;
+  }
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new HttpRequestError(400, 'invalid_request', 'Expected repository as owner/repo, GitHub URL, or object');
+  }
+
+  const repository = value as Record<string, unknown>;
+  if (repository.provider !== 'github') throw new HttpRequestError(400, 'invalid_request', 'Expected repository.provider to be github');
+  const owner = optionalString(repository.owner);
+  const repo = optionalString(repository.repo);
+  if (!owner || !repo) throw new HttpRequestError(400, 'invalid_request', 'Expected repository.owner and repository.repo');
+
+  const reference = extractRepositoryReference(`repo:${owner}/${repo}`);
+  if (!reference) throw new HttpRequestError(400, 'invalid_request', 'Expected valid GitHub repository owner and name');
+  return reference;
 }
 
 function parseCursor(value: string | null): number | undefined {

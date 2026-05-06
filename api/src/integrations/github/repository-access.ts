@@ -6,18 +6,21 @@ export type GitHubRepositoryAccessServiceOptions = {
   appId: string;
   privateKey: string;
   client: GitHubClient;
+  cloneBaseUrl?: string;
   allowedRepositories?: string[];
   now?: () => Date;
 };
 
 export class GitHubRepositoryAccessService {
   private readonly allowedRepositories: string[];
+  private readonly cloneBaseUrl: string;
   private readonly now: () => Date;
   private readonly tokensByInstallation = new Map<number, GitHubInstallationToken>();
   private readonly installationsByRepository = new Map<string, number>();
 
   constructor(private readonly options: GitHubRepositoryAccessServiceOptions) {
     this.allowedRepositories = options.allowedRepositories ?? [];
+    this.cloneBaseUrl = (options.cloneBaseUrl ?? 'https://github.com').replace(/\/+$/, '');
     this.now = options.now ?? (() => new Date());
   }
 
@@ -29,7 +32,7 @@ export class GitHubRepositoryAccessService {
       provider: 'github',
       owner: repository.owner,
       repo: repository.repo,
-      cloneUrl: `https://github.com/${repository.owner}/${repository.repo}.git`,
+      cloneUrl: `${this.cloneBaseUrl}/${repository.owner}/${repository.repo}.git`,
       expiresAt: token.expiresAt,
       auth: { type: 'bearer', token: token.token },
     };

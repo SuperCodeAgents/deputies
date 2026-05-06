@@ -22,6 +22,13 @@ export type Message = {
   status: string;
   prompt: string;
   createdAt: string;
+  context?: Record<string, unknown>;
+};
+
+export type RepositoryInput = {
+  provider: 'github';
+  owner: string;
+  repo: string;
 };
 
 export type AgentEvent = {
@@ -150,11 +157,13 @@ export async function listMessages(sessionId: string, token: string): Promise<Me
   return body.messages;
 }
 
-export async function enqueueMessage(input: { sessionId: string; prompt: string; token: string }): Promise<Message> {
+export async function enqueueMessage(input: { sessionId: string; prompt: string; token: string; repository?: string | RepositoryInput }): Promise<Message> {
+  const requestBody: { prompt: string; repository?: string | RepositoryInput } = { prompt: input.prompt };
+  if (input.repository) requestBody.repository = input.repository;
   const body = await request<{ message: Message }>(`/sessions/${input.sessionId}/messages`, {
     method: 'POST',
     token: input.token,
-    body: { prompt: input.prompt },
+    body: requestBody,
   });
   return body.message;
 }
