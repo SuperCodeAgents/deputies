@@ -17,6 +17,7 @@
     "api:typecheck": "pnpm --dir api typecheck",
     "api:test": "pnpm --dir api test",
     "api:test:integration": "pnpm --dir api test:integration",
+    "api:test:load": "pnpm --dir api test:load",
     "api:test:uat": "pnpm --dir api test:uat",
     "api:test:watch": "pnpm --dir api test:watch",
     "web:dev": "pnpm --dir web dev",

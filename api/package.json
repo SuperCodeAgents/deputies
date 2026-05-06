@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:load": "vitest run --config vitest.load.config.ts",
     "test:uat": "vitest run --config vitest.uat.config.ts",
     "test:watch": "vitest"
   },

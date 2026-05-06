@@ -75,6 +75,7 @@ Current local policy:
 
 - `pnpm api:test` runs deterministic unit tests from `api/test/unit` without Postgres.
 - `pnpm api:test:integration` runs Postgres-backed integration tests and requires `TEST_DATABASE_URL`.
+- `pnpm api:test:load` runs a configurable Postgres-backed control-plane load profile and requires `TEST_DATABASE_URL`.
 - `pnpm api:test:uat` runs built-artifact UAT tests from `api/test/uat` and requires `TEST_DATABASE_URL` plus a prior `pnpm api:build`.
 - `pnpm web:test -- --run` runs the Vite/jsdom operator UI regression tests.
 - `pnpm check` runs API typecheck/tests and web typecheck/tests.
@@ -82,6 +83,8 @@ Current local policy:
 - `docker compose up -d postgres` starts local Postgres and creates both `flue` and `flue_test`.
 - Integration tests apply migrations to `flue_test` and truncate app tables between tests.
 - Do not run `api:test:integration` and `api:test:uat` concurrently against the same `TEST_DATABASE_URL`; both suites reset shared tables.
+- Do not run `api:test:load` concurrently with integration or UAT tests against the same `TEST_DATABASE_URL`; it also resets shared tables.
+- Load test knobs: `LOAD_SESSION_COUNT` defaults to `1000`, `LOAD_MESSAGES_PER_SESSION` defaults to `2`, `LOAD_WORKER_COUNT` defaults to `10`, and `LOAD_MAX_SECONDS` defaults to `120`.
 - Testcontainers is deferred until we need fully hermetic per-run databases.
 - Architecture fitness tests currently run with unit tests and enforce Flue SDK isolation, integration-to-runner separation, and store-to-domain-service separation.
 - API tests exercise the Hono app through the Node adapter so middleware, routing, JSON responses, and SSE behavior remain covered as transport internals change.

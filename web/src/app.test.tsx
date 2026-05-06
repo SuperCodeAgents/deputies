@@ -11,6 +11,7 @@ const session = {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  localStorage.clear();
 });
 
 it('submits composer text on Enter and preserves Shift Enter for newlines', async () => {
@@ -117,7 +118,42 @@ it('keeps a cancelled middle message inline with its surrounding batch', async (
   expect(screen.getAllByText(/Diagnostics/)).toHaveLength(1);
 });
 
-function mockApi(options: { submittedPrompts?: string[]; messages?: unknown[]; events?: unknown[]; sessionOverride?: Partial<typeof session>; onCancelRun?: () => void; authMode?: 'none' | 'bearer' | 'session'; currentUser?: { username: string } | null; logins?: Array<{ username: string; password: string }> } = {}) {
+it('shows run diagnostics for a single-message response', async () => {
+  mockApi({
+    messages: [messageFixture({ id: '00000000-0000-4000-8000-000000000120', sequence: 1, status: 'completed', prompt: 'single message' })],
+    events: [
+      eventFixture({ sequence: 1, type: 'message_started', runId: '00000000-0000-4000-8000-000000000220', messageId: '00000000-0000-4000-8000-000000000120', payload: { sequences: [1], batchSize: 1 } }),
+      eventFixture({ sequence: 2, type: 'sandbox_ready', runId: '00000000-0000-4000-8000-000000000220', messageId: '00000000-0000-4000-8000-000000000120', payload: { provider: 'fake', created: true } }),
+      eventFixture({ sequence: 3, type: 'agent_text_delta', runId: '00000000-0000-4000-8000-000000000220', messageId: '00000000-0000-4000-8000-000000000120', payload: { text: 'single response' } }),
+    ],
+  });
+  render(<App />);
+
+  await screen.findByText('single response');
+
+  expect(screen.getByText(/Diagnostics · 2 events/)).toBeInTheDocument();
+  expect(screen.getByText('sandbox_ready')).toBeInTheDocument();
+});
+
+it('preserves selected archived session and archived section after refresh', async () => {
+  const archivedSession = { ...session, status: 'archived', title: 'Archived chosen' };
+  localStorage.setItem('dev-deputies-selected-session-id', archivedSession.id);
+  localStorage.setItem('dev-deputies-archived-sessions-open', 'true');
+  mockApi({
+    sessionOverride: archivedSession,
+    sessions: [
+      { ...session, id: '00000000-0000-4000-8000-000000000002', title: 'Top active', updatedAt: '2026-05-05T12:05:00.000Z' },
+      archivedSession,
+    ],
+  });
+  render(<App />);
+
+  expect(await screen.findByText('This session is archived.')).toBeInTheDocument();
+  expect(screen.getAllByText('Archived chosen')).toHaveLength(2);
+  expect(screen.getByText(/Archived · 1/).closest('details')).toHaveAttribute('open');
+});
+
+function mockApi(options: { submittedPrompts?: string[]; messages?: unknown[]; events?: unknown[]; sessions?: unknown[]; sessionOverride?: Partial<typeof session>; onCancelRun?: () => void; authMode?: 'none' | 'bearer' | 'session'; currentUser?: { username: string } | null; logins?: Array<{ username: string; password: string }> } = {}) {
   let currentSession = { ...session, ...options.sessionOverride };
   let currentUser = options.currentUser;
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -145,7 +181,7 @@ function mockApi(options: { submittedPrompts?: string[]; messages?: unknown[]; e
     }
 
     if (url.pathname === '/sessions' && method === 'GET') {
-      return jsonResponse({ sessions: [currentSession] });
+      return jsonResponse({ sessions: options.sessions ?? [currentSession] });
     }
 
     if (url.pathname === `/sessions/${currentSession.id}/unarchive` && method === 'POST') {

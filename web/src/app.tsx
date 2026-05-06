@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, SyntheticEvent, useEffect, useRef, useState } from 'react';
 import { Archive, ChevronDown, PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, RotateCcw, X } from 'lucide-react';
 import {
   ApiError,
@@ -38,6 +38,8 @@ import { cn } from './lib/utils.js';
 
 const legacyTokenStorageKey = 'devops-deputies-api-token';
 const tokenStorageKey = 'dev-deputies-api-token';
+const selectedSessionStorageKey = 'dev-deputies-selected-session-id';
+const archivedSessionsOpenStorageKey = 'dev-deputies-archived-sessions-open';
 
 function loadStoredToken(): string {
   const token = localStorage.getItem(tokenStorageKey) ?? localStorage.getItem(legacyTokenStorageKey) ?? '';
@@ -50,7 +52,7 @@ export function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState(loadStoredToken);
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<string>('');
+  const [selectedSessionId, setSelectedSessionId] = useState<string>(() => localStorage.getItem(selectedSessionStorageKey) ?? '');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
@@ -67,14 +69,19 @@ export function App() {
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [threadSearch, setThreadSearch] = useState('');
+  const [archivedSessionsOpen, setArchivedSessionsOpen] = useState(() => localStorage.getItem(archivedSessionsOpenStorageKey) === 'true');
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const eventCursor = useRef(0);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
 
   const bearerAuthRequired = health?.apiAuthMode === 'bearer';
   const sessionAuthRequired = health?.apiAuthMode === 'session';
+  const waitingForAuth = !health || (sessionAuthRequired && !authChecked);
   const canCallApi = Boolean(health) && (!bearerAuthRequired || Boolean(token)) && (!sessionAuthRequired || Boolean(currentUser));
+  const startupLoading = waitingForAuth || (canCallApi && !sessionsLoaded);
   const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null;
   const selectedSessionArchived = selectedSession?.status === 'archived';
   const hasActiveRun = messages.some((message) => message.status === 'processing' || message.status === 'cancelling') || selectedSession?.status === 'active';
@@ -94,10 +101,17 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (health?.apiAuthMode !== 'session') return;
+    if (!health) return;
+    if (health.apiAuthMode !== 'session') {
+      setCurrentUser(null);
+      setAuthChecked(true);
+      return;
+    }
+    setAuthChecked(false);
     getCurrentUser()
       .then(setCurrentUser)
-      .catch(() => setCurrentUser(null));
+      .catch(() => setCurrentUser(null))
+      .finally(() => setAuthChecked(true));
   }, [health?.apiAuthMode]);
 
   useEffect(() => {
@@ -148,7 +162,14 @@ export function App() {
     try {
       const nextSessions = await listSessions(token);
       setSessions(nextSessions);
-      if (!selectedSessionId && nextSessions[0]) setSelectedSessionId(nextSessions[0].id);
+      setSessionsLoaded(true);
+      setSelectedSessionId((current) => {
+        if (current && nextSessions.some((session) => session.id === current)) return current;
+        const next = nextSessions[0]?.id ?? '';
+        if (next) localStorage.setItem(selectedSessionStorageKey, next);
+        else localStorage.removeItem(selectedSessionStorageKey);
+        return next;
+      });
     } catch (err) {
       handleApiError(err);
     } finally {
@@ -322,6 +343,7 @@ export function App() {
     try {
       const user = await login({ username: loginUsername.trim(), password: loginPassword });
       setCurrentUser(user);
+      setAuthChecked(true);
       setLoginPassword('');
     } catch (err) {
       handleApiError(err);
@@ -332,19 +354,23 @@ export function App() {
     if (sessionAuthRequired) {
       void logout().catch(() => undefined);
       setCurrentUser(null);
+      setAuthChecked(true);
       setLoginPassword('');
     }
     localStorage.removeItem(tokenStorageKey);
     localStorage.removeItem(legacyTokenStorageKey);
-    setToken('');
-    setDraftToken('');
+      setToken('');
+      setDraftToken('');
+      localStorage.removeItem(selectedSessionStorageKey);
     setSessions([]);
-    setSelectedSessionId('');
+    setSessionsLoaded(false);
+      setSelectedSessionId('');
     setIsCreatingThread(false);
   }
 
   function startNewThread() {
     setSidebarCollapsed(false);
+    localStorage.removeItem(selectedSessionStorageKey);
     setSelectedSessionId('');
     setIsCreatingThread(true);
     setMessages([]);
@@ -355,6 +381,7 @@ export function App() {
   }
 
   function selectSession(sessionId: string) {
+    localStorage.setItem(selectedSessionStorageKey, sessionId);
     setSelectedSessionId(sessionId);
     setIsCreatingThread(false);
     setSidebarOpen(false);
@@ -368,6 +395,7 @@ export function App() {
   function applyArchivedSession(session: Session) {
     setSessions((current) => current.map((candidate) => (candidate.id === session.id ? session : candidate)));
     if (selectedSessionId === session.id) {
+      localStorage.removeItem(selectedSessionStorageKey);
       setSelectedSessionId('');
       setMessages([]);
       setEvents([]);
@@ -416,7 +444,7 @@ export function App() {
     <main className="flex h-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
       {error ? <div className="border-b border-red-900/60 bg-red-950/40 px-4 py-2 text-sm text-red-200">{error}</div> : null}
 
-      {bearerAuthRequired && !token ? <BearerAuthPanel draftToken={draftToken} setDraftToken={setDraftToken} saveToken={saveToken} /> : sessionAuthRequired && !currentUser ? <SessionAuthPanel password={loginPassword} username={loginUsername} onPasswordChange={setLoginPassword} onSubmit={handleLogin} onUsernameChange={setLoginUsername} /> : (
+      {startupLoading ? <StartupLoadingPanel /> : bearerAuthRequired && !token ? <BearerAuthPanel draftToken={draftToken} setDraftToken={setDraftToken} saveToken={saveToken} /> : sessionAuthRequired && !currentUser ? <SessionAuthPanel password={loginPassword} username={loginUsername} onPasswordChange={setLoginPassword} onSubmit={handleLogin} onUsernameChange={setLoginUsername} /> : (
         <>
 
       {!sidebarCollapsed && !sidebarOpen ? (
@@ -442,6 +470,7 @@ export function App() {
             <ThreadSidebar
               activeSessions={activeSessions}
               archivedSessions={archivedSessions}
+              archivedSessionsOpen={archivedSessionsOpen || Boolean(selectedSessionArchived)}
               authRequired={bearerAuthRequired || sessionAuthRequired}
               canCallApi={canCallApi}
               health={health}
@@ -450,6 +479,7 @@ export function App() {
               selectedSessionId={selectedSessionId}
               token={token}
               onArchive={archiveFromList}
+              onArchivedSessionsOpenChange={setArchivedSessionsOpen}
               onCollapse={toggleSidebar}
               onNewThread={startNewThread}
               onRefresh={refreshSessions}
@@ -541,6 +571,7 @@ export function App() {
 function ThreadSidebar(props: {
   activeSessions: Session[];
   archivedSessions: Session[];
+  archivedSessionsOpen: boolean;
   authRequired: boolean;
   canCallApi: boolean;
   health: Health | null;
@@ -549,6 +580,7 @@ function ThreadSidebar(props: {
   selectedSessionId: string;
   token: string;
   onArchive: (sessionId: string) => void;
+  onArchivedSessionsOpenChange: (open: boolean) => void;
   onCollapse: () => void;
   onNewThread: () => void;
   onRefresh: () => void;
@@ -558,6 +590,13 @@ function ThreadSidebar(props: {
   onUnarchive: (sessionId: string) => void;
 }) {
   const searching = Boolean(props.search.trim());
+
+  function handleArchivedToggle(event: SyntheticEvent<HTMLDetailsElement>) {
+    if (searching) return;
+    const open = event.currentTarget.open;
+    localStorage.setItem(archivedSessionsOpenStorageKey, String(open));
+    props.onArchivedSessionsOpenChange(open);
+  }
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
@@ -585,7 +624,7 @@ function ThreadSidebar(props: {
           {!props.activeSessions.length ? <p className="px-2 py-3 text-sm text-slate-500">{props.search ? 'No matching active sessions.' : 'No active sessions.'}</p> : null}
         </div>
         {props.archivedSessions.length || searching ? (
-          <details className="mt-4 border-t border-slate-800 pt-3" open={searching ? true : undefined}>
+          <details className="mt-4 border-t border-slate-800 pt-3" open={searching || props.archivedSessionsOpen} onToggle={handleArchivedToggle}>
             <summary className="flex cursor-pointer items-center gap-1 text-sm font-medium text-slate-400"><ChevronDown className="h-4 w-4" /> Archived · {props.archivedSessions.length}</summary>
             {props.archivedSessions.length ? (
               <div className="mt-2 grid min-w-0 gap-1 opacity-80">
@@ -597,6 +636,17 @@ function ThreadSidebar(props: {
       </div>
       <ApiStatusFooter authRequired={props.authRequired} health={props.health} token={props.token} onSignOut={props.onSignOut} />
     </div>
+  );
+}
+
+function StartupLoadingPanel() {
+  return (
+    <section className="grid min-h-screen place-items-center px-4">
+      <Card className="max-w-lg p-6 text-center">
+        <h2 className="text-lg font-semibold">Loading Dev Deputies</h2>
+        <p className="mt-2 text-sm text-slate-400">Restoring your session and workspace.</p>
+      </Card>
+    </section>
   );
 }
 
@@ -961,11 +1011,17 @@ function groupMessagesByRun(messages: Message[], events: AgentEvent[]): MessageG
 function groupDiagnosticsByRun(events: AgentEvent[]): Record<string, AgentEvent[]> {
   const grouped: Record<string, AgentEvent[]> = {};
   for (const event of events) {
-    const key = event.runId ?? event.messageId;
-    if (!key || event.type === 'message_created' || event.type === 'agent_text_delta') continue;
-    grouped[key] = [...(grouped[key] ?? []), event];
+    if (event.type === 'message_created' || event.type === 'agent_text_delta') continue;
+    for (const key of diagnosticGroupKeys(event)) {
+      grouped[key] = [...(grouped[key] ?? []), event];
+    }
   }
   return grouped;
+}
+
+function diagnosticGroupKeys(event: AgentEvent): string[] {
+  const keys = [event.runId, event.messageId].filter((key): key is string => Boolean(key));
+  return Array.from(new Set(keys));
 }
 
 function titleFromPrompt(prompt: string): string {

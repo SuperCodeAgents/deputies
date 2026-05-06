@@ -404,6 +404,38 @@ describe.skipIf(!testDatabaseUrl)('PostgresStore', () => {
     }
   });
 
+  it('accepts concurrent writes through multiple API replicas sharing Postgres', async () => {
+    const replicaStoreA = new PostgresStore(testDatabaseUrl!);
+    const replicaStoreB = new PostgresStore(testDatabaseUrl!);
+    const serverA = createServer(loadConfig({ APP_STORE: 'postgres', DATABASE_URL: testDatabaseUrl! }), createServices(replicaStoreA));
+    const serverB = createServer(loadConfig({ APP_STORE: 'postgres', DATABASE_URL: testDatabaseUrl! }), createServices(replicaStoreB));
+    const [baseUrlA, baseUrlB] = await Promise.all([listen(serverA), listen(serverB)]);
+
+    try {
+      const createSession = await postJson(`${baseUrlA}/sessions`, { title: 'Multi API' });
+      expect(createSession.status).toBe(201);
+      const { session } = (await createSession.json()) as { session: { id: string } };
+
+      const responses = await Promise.all(
+        Array.from({ length: 20 }, (_, index) => postJson(
+          `${index % 2 === 0 ? baseUrlA : baseUrlB}/sessions/${session.id}/messages`,
+          { prompt: `message ${index + 1}` },
+        )),
+      );
+
+      expect(responses.map((response) => response.status)).toEqual(new Array(20).fill(202));
+
+      const messagesResponse = await fetch(`${baseUrlB}/sessions/${session.id}/messages`);
+      const { messages } = (await messagesResponse.json()) as { messages: Array<{ sequence: number; status: string }> };
+      expect(messages).toHaveLength(20);
+      expect(messages.map((message) => message.sequence)).toEqual(Array.from({ length: 20 }, (_, index) => index + 1));
+      expect(messages.every((message) => message.status === 'pending')).toBe(true);
+    } finally {
+      await Promise.all([close(serverA), close(serverB)]);
+      await Promise.all([replicaStoreA.close(), replicaStoreB.close()]);
+    }
+  });
+
   it('accepts generic webhooks with DB-backed source prompts and dedupe', async () => {
     const services = createServices(store);
     const now = new Date();
