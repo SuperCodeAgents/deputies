@@ -466,9 +466,14 @@ export function App() {
     threadEndRef.current?.scrollIntoView({ block: 'end', behavior });
   }
 
-  function toggleSidebar() {
-    setSidebarOpen((open) => !open);
-    setSidebarCollapsed((collapsed) => !collapsed);
+  function collapseSidebar() {
+    setSidebarOpen(false);
+    setSidebarCollapsed(true);
+  }
+
+  function expandSidebar() {
+    setSidebarCollapsed(false);
+    setSidebarOpen(true);
   }
 
   function applyArchivedSession(session: Session) {
@@ -541,16 +546,16 @@ export function App() {
       {startupLoading ? <StartupLoadingPanel /> : bearerAuthRequired && !token ? <BearerAuthPanel draftToken={draftToken} setDraftToken={setDraftToken} saveToken={saveToken} /> : sessionAuthRequired && !currentUser ? <SessionAuthPanel password={loginPassword} username={loginUsername} onPasswordChange={setLoginPassword} onSubmit={handleLogin} onUsernameChange={setLoginUsername} /> : (
         <>
 
-      {!sidebarCollapsed && !sidebarOpen ? (
-        <Button className="fixed left-3 top-3 z-30 h-9 w-9 p-0 shadow-xl md:hidden" variant="secondary" size="icon" onClick={() => setSidebarOpen(true)} aria-label="Open sessions" title="Open sessions">
+      {!sidebarOpen ? (
+        <Button className="fixed left-3 top-3 z-30 h-9 w-9 p-0 shadow-xl md:hidden" variant="secondary" size="icon" onClick={expandSidebar} aria-label="Open sessions" title="Open sessions">
           <PanelLeftOpen className="h-4 w-4" />
         </Button>
       ) : null}
 
-      <section className={cn('grid min-h-0 flex-1', sidebarCollapsed ? 'grid-cols-[3.75rem_minmax(0,1fr)]' : 'grid-cols-1 md:grid-cols-[18rem_minmax(0,1fr)]')}>
+      <section className={cn('grid min-h-0 flex-1 grid-cols-1', sidebarCollapsed ? 'md:grid-cols-[3.75rem_minmax(0,1fr)]' : 'md:grid-cols-[18rem_minmax(0,1fr)]')}>
         {sidebarCollapsed ? (
-          <aside className="flex min-h-0 border-r border-slate-800 bg-slate-950/95 p-3">
-            <Button className="h-9 w-9 p-0 text-slate-400 hover:text-slate-100" variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Open sessions" title="Open sessions">
+          <aside className="hidden min-h-0 border-r border-slate-800 bg-slate-950/95 p-3 md:flex">
+            <Button className="h-9 w-9 p-0 text-slate-400 hover:text-slate-100" variant="ghost" size="icon" onClick={expandSidebar} aria-label="Expand sessions" title="Expand sessions">
               <PanelLeftOpen className="h-4 w-4" />
             </Button>
           </aside>
@@ -574,7 +579,7 @@ export function App() {
               token={token}
               onArchive={archiveFromList}
               onArchivedSessionsOpenChange={setArchivedSessionsOpen}
-              onCollapse={toggleSidebar}
+              onCollapse={collapseSidebar}
               onNewThread={startNewThread}
               onRefresh={refreshSessions}
               onSearch={setThreadSearch}
@@ -585,9 +590,10 @@ export function App() {
           </aside>
         )}
 
-        <section className="min-h-0 min-w-0 overflow-hidden">
+        <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
           {health?.sandboxProvider === 'local' ? <LocalSandboxWarning /> : null}
-          {isCreatingThread || !selectedSession ? (
+          <div className="min-h-0 flex-1 overflow-hidden">
+            {isCreatingThread || !selectedSession ? (
               <NewThreadPanel
                 canCallApi={canCallApi}
                 loading={loading}
@@ -597,7 +603,7 @@ export function App() {
                 onRepositoryChange={setNewThreadRepository}
                 onSubmit={handleCreateThread}
               />
-          ) : (
+            ) : (
             <section className="flex h-full min-h-0 flex-col">
               <ThreadHeader
                 editingTitle={editingTitle}
@@ -613,6 +619,7 @@ export function App() {
                 <section className="flex min-h-0 min-w-0 flex-col px-3 pt-4 md:px-8 xl:px-20">
                   <div className="relative min-h-0 flex-1">
                     <div className="h-full overflow-auto pb-4" ref={threadScrollRef} onScroll={handleThreadScroll} role="log" aria-label="Session messages">
+                      <MobileContextPanel repository={selectedRepository} artifacts={artifacts} callbacks={callbacks} onReplayCallback={handleReplayCallback} />
                       <ChatPanel
                         editingMessageId={editingMessageId}
                         events={events}
@@ -658,10 +665,11 @@ export function App() {
                     </Card>
                   </form>
                 </section>
-                <ContextPanel repository={selectedRepository} artifacts={artifacts} callbacks={callbacks} onReplayCallback={handleReplayCallback} />
+                <DesktopContextPanel repository={selectedRepository} artifacts={artifacts} callbacks={callbacks} onReplayCallback={handleReplayCallback} />
               </div>
             </section>
-          )}
+            )}
+          </div>
         </section>
       </section>
         </>
@@ -676,8 +684,9 @@ function LocalSandboxWarning() {
       <div className="flex items-start gap-2">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
         <p>
-          <strong>Local sandbox mode is not a security boundary.</strong> Commands run on this machine in a temporary workspace. Use it only for trusted local development.
+          <strong>Local sandbox mode is not a security boundary.</strong> Commands run on the API/worker host runtime in a temporary workspace. Use it only for trusted local development.
         </p>
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" aria-hidden="true" />
       </div>
     </div>
   );
@@ -1128,18 +1137,21 @@ function Diagnostics(props: { events: AgentEvent[] }) {
   );
 }
 
-function ContextPanel(props: { repository: string | null; artifacts: Artifact[]; callbacks: CallbackDelivery[]; onReplayCallback: (callbackId: string) => void }) {
+function MobileContextPanel(props: { repository: string | null; artifacts: Artifact[]; callbacks: CallbackDelivery[]; onReplayCallback: (callbackId: string) => void }) {
   return (
-    <>
-      <details className="border-t border-slate-800 bg-slate-950/70 lg:hidden">
-        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-200">Context</summary>
-        <ContextPanelContent {...props} />
-      </details>
-      <aside className="hidden min-h-0 overflow-auto border-l border-slate-800 bg-slate-950/40 p-4 lg:block">
-        <h2 className="text-sm font-semibold">Context</h2>
-        <ContextPanelContent {...props} />
-      </aside>
-    </>
+    <details className="mb-5 rounded-md border border-slate-800 bg-slate-950/70 shadow-sm lg:hidden">
+      <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-200">Context</summary>
+      <ContextPanelContent {...props} />
+    </details>
+  );
+}
+
+function DesktopContextPanel(props: { repository: string | null; artifacts: Artifact[]; callbacks: CallbackDelivery[]; onReplayCallback: (callbackId: string) => void }) {
+  return (
+    <aside className="hidden min-h-0 overflow-auto border-l border-slate-800 bg-slate-950/40 p-4 lg:block">
+      <h2 className="text-sm font-semibold">Context</h2>
+      <ContextPanelContent {...props} />
+    </aside>
   );
 }
 
@@ -1178,24 +1190,15 @@ function ContextPanelContent(props: { repository: string | null; artifacts: Arti
       </div>
       <div className="mt-3 grid gap-2">
         {props.callbacks.map((callback) => (
-          <Card className="p-3" key={callback.id}>
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <span className="text-xs text-slate-500">{callback.targetType} · {formatDate(callback.updatedAt)}</span>
-                <strong className="mt-1 block truncate text-sm font-medium">{callbackEventLabel(callback.eventType)}</strong>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <Badge className={statusTextClass(callback.status)}>{callback.status}</Badge>
-                {callback.status === 'failed' ? (
-                  <Button className="h-7 w-7 p-0" size="icon" variant="ghost" onClick={() => props.onReplayCallback(callback.id)} aria-label="Replay callback" title="Replay callback">
-                    <RotateCcw className="h-3.5 w-3.5" />
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-            <details className="mt-2 text-xs text-slate-400">
-              <summary className="cursor-pointer text-slate-500">Details</summary>
-              <dl className="mt-2 grid gap-1">
+          <details className="group rounded-md border border-slate-800 bg-slate-950/40 text-xs text-slate-400" key={callback.id}>
+            <summary className="grid cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
+              <ChevronDown className="h-3.5 w-3.5 -rotate-90 text-slate-500 transition-transform group-open:rotate-0" aria-hidden="true" />
+              <span className="min-w-0 truncate text-slate-500">{callback.targetType} · {formatDate(callback.updatedAt)}</span>
+              <Badge className={statusTextClass(callback.status)}>{callback.status}</Badge>
+            </summary>
+            <div className="border-t border-slate-800 px-3 py-2">
+              <dl className="grid gap-1">
+                <div>Type: {callbackEventLabel(callback.eventType)}</div>
                 <div>Attempts: {callback.attempts}/{callback.maxAttempts}</div>
                 {callback.nextAttemptAt ? <div>Next retry: {formatDate(callback.nextAttemptAt)}</div> : null}
                 {callback.lastAttemptAt ? <div>Last attempt: {formatDate(callback.lastAttemptAt)}</div> : null}
@@ -1203,8 +1206,13 @@ function ContextPanelContent(props: { repository: string | null; artifacts: Arti
                 {callback.lastError ? <div className="text-red-300">Last error: {callback.lastError}</div> : null}
                 <div className="truncate">ID: {callback.id}</div>
               </dl>
-            </details>
-          </Card>
+              {callback.status === 'failed' ? (
+                <Button className="mt-2 h-7 px-2" size="sm" variant="secondary" onClick={() => props.onReplayCallback(callback.id)}>
+                  <RotateCcw className="h-3.5 w-3.5" /> Replay callback
+                </Button>
+              ) : null}
+            </div>
+          </details>
         ))}
         {!props.callbacks.length ? <p className="text-sm text-slate-500">No callbacks yet.</p> : null}
       </div>

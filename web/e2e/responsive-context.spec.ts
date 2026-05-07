@@ -27,7 +27,8 @@ test('shows context as a sidebar on wide screens', async ({ page }) => {
   await page.goto('/');
 
   await expect(page.getByRole('heading', { name: 'Context' })).toBeVisible();
-  await expect(page.locator('aside').getByText('Completion reply')).toBeVisible();
+  await page.locator('aside').getByText(/http ·/).click();
+  await expect(page.locator('aside').getByText('Type: Completion reply')).toBeVisible();
   await expect(page.locator('details').filter({ has: page.getByText('Context', { exact: true }) })).not.toBeVisible();
 });
 

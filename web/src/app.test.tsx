@@ -289,11 +289,11 @@ it('shows callback delivery status and replays failed callbacks', async () => {
   render(<App />);
 
   expect(await screen.findAllByText('Callbacks')).not.toHaveLength(0);
-  expect(await screen.findAllByText('Completion reply')).not.toHaveLength(0);
   expect(screen.getAllByText('Last error: HTTP callback returned 500')[1]).not.toBeVisible();
-  fireEvent.click(screen.getAllByText('Details')[1]!);
+  fireEvent.click(screen.getAllByText(/http ·/)[1]!);
+  expect(screen.getAllByText('Type: Completion reply')[1]).toBeVisible();
   expect(screen.getAllByText('Last error: HTTP callback returned 500')[1]).toBeVisible();
-  fireEvent.click(screen.getAllByRole('button', { name: 'Replay callback' })[1]!);
+  fireEvent.click(screen.getAllByRole('button', { name: /Replay callback/ })[1]!);
 
   await waitFor(() => expect(replays).toEqual(['00000000-0000-4000-8000-000000000301']));
   expect(await screen.findAllByText('pending')).not.toHaveLength(0);
@@ -339,7 +339,7 @@ it('warns when running in local sandbox mode', async () => {
   render(<App />);
 
   expect(await screen.findByText('Local sandbox mode is not a security boundary.')).toBeInTheDocument();
-  expect(screen.getByText(/Commands run on this machine/)).toBeInTheDocument();
+  expect(screen.getByText(/Commands run on the API\/worker host runtime/)).toBeInTheDocument();
 });
 
 function mockApi(options: MockApiOptions = {}) {
