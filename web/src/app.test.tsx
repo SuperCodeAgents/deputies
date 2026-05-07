@@ -246,15 +246,15 @@ it('shows callback delivery status and replays failed callbacks', async () => {
   });
   render(<App />);
 
-  expect(await screen.findByText('Callbacks')).toBeInTheDocument();
-  expect(await screen.findByText('Completion reply')).toBeInTheDocument();
-  expect(screen.getByText('Last error: HTTP callback returned 500')).not.toBeVisible();
-  fireEvent.click(screen.getByText('Details'));
-  expect(screen.getByText('Last error: HTTP callback returned 500')).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'Replay callback' }));
+  expect(await screen.findAllByText('Callbacks')).not.toHaveLength(0);
+  expect(await screen.findAllByText('Completion reply')).not.toHaveLength(0);
+  expect(screen.getAllByText('Last error: HTTP callback returned 500')[1]).not.toBeVisible();
+  fireEvent.click(screen.getAllByText('Details')[1]!);
+  expect(screen.getAllByText('Last error: HTTP callback returned 500')[1]).toBeVisible();
+  fireEvent.click(screen.getAllByRole('button', { name: 'Replay callback' })[1]!);
 
   await waitFor(() => expect(replays).toEqual(['00000000-0000-4000-8000-000000000301']));
-  expect(await screen.findByText('pending')).toBeInTheDocument();
+  expect(await screen.findAllByText('pending')).not.toHaveLength(0);
 });
 
 it('preserves selected archived session and archived section after refresh', async () => {

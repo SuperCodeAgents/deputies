@@ -1112,8 +1112,22 @@ function Diagnostics(props: { events: AgentEvent[] }) {
 
 function ContextPanel(props: { repository: string | null; artifacts: Artifact[]; callbacks: CallbackDelivery[]; onReplayCallback: (callbackId: string) => void }) {
   return (
-    <aside className="min-h-0 overflow-auto border-t border-slate-800 bg-slate-950/40 p-4 lg:border-l lg:border-t-0">
-      <h2 className="text-sm font-semibold">Context</h2>
+    <>
+      <details className="border-t border-slate-800 bg-slate-950/70 lg:hidden">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-200">Context</summary>
+        <ContextPanelContent {...props} />
+      </details>
+      <aside className="hidden min-h-0 overflow-auto border-l border-slate-800 bg-slate-950/40 p-4 lg:block">
+        <h2 className="text-sm font-semibold">Context</h2>
+        <ContextPanelContent {...props} />
+      </aside>
+    </>
+  );
+}
+
+function ContextPanelContent(props: { repository: string | null; artifacts: Artifact[]; callbacks: CallbackDelivery[]; onReplayCallback: (callbackId: string) => void }) {
+  return (
+    <div className="p-4 pt-0 lg:p-0 lg:pt-0">
       <div className="mt-3 border-b border-slate-800 pb-3 text-sm text-slate-400">
         <strong className="block font-medium text-slate-200">Repository</strong>
         {props.repository ? (
@@ -1176,7 +1190,7 @@ function ContextPanel(props: { repository: string | null; artifacts: Artifact[];
         ))}
         {!props.callbacks.length ? <p className="text-sm text-slate-500">No callbacks yet.</p> : null}
       </div>
-    </aside>
+    </div>
   );
 }
 
