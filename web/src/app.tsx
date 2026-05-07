@@ -1,5 +1,7 @@
 import { FormEvent, KeyboardEvent, SyntheticEvent, useEffect, useRef, useState } from 'react';
-import { Archive, ChevronDown, PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, RotateCcw, X } from 'lucide-react';
+import { Archive, Check, ChevronDown, Copy, PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, RotateCcw, X } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   ApiError,
   AgentEvent,
@@ -905,7 +907,7 @@ function ChatPanel(props: {
             {response ? (
             <Card className="p-3">
               <h3 className="mb-1 text-xs font-medium text-slate-400">Deputy response</h3>
-              <p className="whitespace-pre-wrap text-sm leading-6 text-slate-100">{response}</p>
+              <MarkdownText text={response} />
             </Card>
           ) : null}
             <Diagnostics events={groupDiagnostics} />
@@ -951,8 +953,85 @@ function UserMessageCard(props: {
             <Button size="sm" onClick={props.onSaveEdit} disabled={!props.messageDraft.trim()}>Save</Button>
           </div>
         </div>
-      ) : <p className="whitespace-pre-wrap text-sm leading-6 text-slate-100">{message.prompt}</p>}
+      ) : <MarkdownText text={message.prompt} />}
     </Card>
+  );
+}
+
+function MarkdownText(props: { text: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        a: ({ className, ...props }) => <a className={cn('text-sky-300 underline decoration-sky-500/60 underline-offset-2 hover:text-sky-200', className)} target="_blank" rel="noreferrer" {...props} />,
+        blockquote: ({ className, ...props }) => <blockquote className={cn('border-l-2 border-slate-700 pl-3 text-slate-300', className)} {...props} />,
+        code: ({ children, className, ...props }) => {
+          const code = String(children).replace(/\n$/, '');
+          const language = className?.match(/language-(\S+)/)?.[1];
+          if (language || String(children).includes('\n')) return <HighlightedCode code={code} {...(language ? { language } : {})} />;
+          return <code className={cn('rounded border border-slate-700/70 bg-slate-950 px-1.5 py-0.5 font-mono text-[0.85em] text-cyan-100 shadow-sm', className)} {...props}>{children}</code>;
+        },
+        h1: ({ className, ...props }) => <h1 className={cn('mt-4 text-xl font-semibold text-slate-50 first:mt-0', className)} {...props} />,
+        h2: ({ className, ...props }) => <h2 className={cn('mt-4 text-lg font-semibold text-slate-50 first:mt-0', className)} {...props} />,
+        h3: ({ className, ...props }) => <h3 className={cn('mt-3 text-base font-semibold text-slate-50 first:mt-0', className)} {...props} />,
+        hr: ({ className, ...props }) => <hr className={cn('border-slate-800', className)} {...props} />,
+        li: ({ className, ...props }) => <li className={cn('pl-1', className)} {...props} />,
+        ol: ({ className, ...props }) => <ol className={cn('list-decimal space-y-1 pl-5', className)} {...props} />,
+        p: ({ className, ...props }) => <p className={cn('whitespace-pre-wrap text-sm leading-6 text-slate-100', className)} {...props} />,
+        pre: ({ children }) => <>{children}</>,
+        table: ({ className, ...props }) => <table className={cn('w-full border-collapse text-sm', className)} {...props} />,
+        tbody: ({ className, ...props }) => <tbody className={cn('divide-y divide-slate-800', className)} {...props} />,
+        td: ({ className, ...props }) => <td className={cn('border border-slate-800 px-2 py-1 align-top text-slate-100', className)} {...props} />,
+        th: ({ className, ...props }) => <th className={cn('border border-slate-800 px-2 py-1 text-left font-medium text-slate-200', className)} {...props} />,
+        thead: ({ className, ...props }) => <thead className={cn('bg-slate-900/80', className)} {...props} />,
+        ul: ({ className, ...props }) => <ul className={cn('list-disc space-y-1 pl-5', className)} {...props} />,
+      }}
+    >
+      {props.text}
+    </ReactMarkdown>
+  );
+}
+
+function HighlightedCode(props: { code: string; language?: string }) {
+  const [html, setHtml] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    import('shiki')
+      .then(({ codeToHtml }) => codeToHtml(props.code, { lang: props.language ?? 'text', theme: 'github-dark-default' }))
+      .then((nextHtml) => {
+        if (!cancelled) setHtml(nextHtml);
+      })
+      .catch(() => {
+        if (!cancelled) setHtml('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.code, props.language]);
+
+  async function copyCode() {
+    await navigator.clipboard.writeText(props.code);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1400);
+  }
+
+  return (
+    <figure className="my-3 overflow-hidden rounded-lg border border-slate-700/80 bg-slate-950 shadow-[0_12px_32px_rgba(2,6,23,0.35)]">
+      <figcaption className="flex items-center justify-between border-b border-slate-800 bg-slate-900/90 px-3 py-1.5 text-[0.7rem] font-medium uppercase tracking-widest text-slate-400">
+        <span>{props.language ?? 'text'}</span>
+        <button className="inline-flex items-center gap-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-[0.65rem] text-slate-300 transition hover:border-slate-500 hover:text-slate-100" type="button" onClick={copyCode} aria-label="Copy code">
+          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </figcaption>
+      {html ? (
+        <div className="highlighted-code overflow-auto text-sm leading-6" dangerouslySetInnerHTML={{ __html: html }} />
+      ) : (
+        <pre className="overflow-auto p-3 text-sm leading-6 text-slate-100"><code>{props.code}</code></pre>
+      )}
+    </figure>
   );
 }
 

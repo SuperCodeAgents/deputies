@@ -170,6 +170,28 @@ it('prefers final assistant response over streamed deltas', async () => {
   expect(screen.queryByText('corrupted stream')).not.toBeInTheDocument();
 });
 
+it('renders assistant markdown with copyable highlighted code blocks and without enabling raw html', async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  mockApi({
+    messages: [messageFixture({ id: '00000000-0000-4000-8000-000000000122', sequence: 1, status: 'completed', prompt: '**please summarize**' })],
+    events: [
+      eventFixture({ sequence: 1, type: 'message_started', runId: '00000000-0000-4000-8000-000000000222', messageId: '00000000-0000-4000-8000-000000000122', payload: { sequences: [1], batchSize: 1 } }),
+      eventFixture({ sequence: 2, type: 'agent_response_final', runId: '00000000-0000-4000-8000-000000000222', messageId: '00000000-0000-4000-8000-000000000122', payload: { text: '# Summary\n\n- **Done**\n\n```ts\nconst ok = true;\n```\n\n[Docs](https://example.com)\n\n<script>alert(1)</script>' } }),
+    ],
+  });
+  render(<App />);
+
+  expect(await screen.findByRole('heading', { name: 'Summary' })).toBeInTheDocument();
+  expect(screen.getByText('Done')).toBeInTheDocument();
+  expect(screen.getByText('const ok = true;')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Docs' })).toHaveAttribute('href', 'https://example.com');
+  expect(document.querySelector('script')).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Copy code' }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith('const ok = true;'));
+});
+
 it('shows callback delivery status and replays failed callbacks', async () => {
   const replays: string[] = [];
   mockApi({
