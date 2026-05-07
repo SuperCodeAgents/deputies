@@ -13,6 +13,7 @@ import { SlackRunProgressNotifier } from './integrations/slack/progress-notifier
 import { FakeRunner } from './runner/fake.js';
 import type { Runner } from './runner/types.js';
 import { RealFlueAgentFactory } from './runner-flue/agent-factory.js';
+import { loadOpenAICodexApiKey } from './runner-flue/openai-codex-auth.js';
 import { FlueRunner } from './runner-flue/runner.js';
 import { PostgresFlueSessionStore } from './runner-flue/session-store.js';
 import { DaytonaSandboxProvider } from './sandbox/daytona.js';
@@ -52,7 +53,7 @@ if (config.runMode === 'all' || config.runMode === 'worker') {
   const worker = new WorkerService({
     store,
     events: services.events,
-    runner: createRunner(),
+    runner: await createRunner(),
     runnerType: config.runner,
     sandboxProvider,
     leaseOwner: `worker-${process.pid}`,
@@ -135,12 +136,17 @@ function createSandboxProvider(): SandboxProvider {
   throw new Error(`SANDBOX_PROVIDER=${config.sandboxProvider} is not wired yet`);
 }
 
-function createRunner(): Runner {
+async function createRunner(): Promise<Runner> {
   if (config.runner === 'fake') return new FakeRunner();
 
+  const model = requireFlueModel(config);
   const options = {
-    model: requireFlueModel(config),
+    model,
   };
+  if (model.startsWith('openai-codex/')) {
+    const { apiKey } = await loadOpenAICodexApiKey(config.flueOpenaiCodexAuthFile);
+    Object.assign(options, { providers: { 'openai-codex': { apiKey } } });
+  }
   if (config.flueSessionStore === 'postgres') {
     const sessionStore = new PostgresFlueSessionStore(requireDatabaseUrl(config));
     resources.push(sessionStore);

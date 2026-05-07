@@ -5,6 +5,7 @@ import { sandboxHandleToFlueFactory } from './sandbox-factory.js';
 
 export type RealFlueAgentFactoryOptions = {
   model: AgentInit['model'];
+  providers?: AgentInit['providers'];
   sessionStore?: SessionStore;
   env?: Record<string, unknown>;
 };
@@ -42,6 +43,7 @@ export class RealFlueAgentFactory implements FlueAgentFactory {
       model: this.options.model,
       persist: this.sessionStore,
     };
+    if (this.options.providers) initOptions.providers = this.options.providers;
     if (input.cwd) initOptions.cwd = input.cwd;
     if (input.tools) initOptions.tools = input.tools;
 

@@ -25,6 +25,7 @@ export type AppConfig = {
   databaseUrl?: string;
   flueSessionStore: 'postgres' | 'memory';
   flueModel?: string;
+  flueOpenaiCodexAuthFile?: string;
   daytonaApiKey?: string;
   daytonaApiUrl?: string;
   daytonaTarget?: string;
@@ -89,6 +90,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   if (env.AUTH_SESSION_SECRET) config.authSessionSecret = env.AUTH_SESSION_SECRET;
   if (env.DATABASE_URL) config.databaseUrl = env.DATABASE_URL;
   if (env.FLUE_MODEL) config.flueModel = env.FLUE_MODEL;
+  if (env.FLUE_OPENAI_CODEX_AUTH_FILE) config.flueOpenaiCodexAuthFile = env.FLUE_OPENAI_CODEX_AUTH_FILE;
   if (env.DAYTONA_API_KEY) config.daytonaApiKey = env.DAYTONA_API_KEY;
   if (env.DAYTONA_API_URL) config.daytonaApiUrl = env.DAYTONA_API_URL;
   if (env.DAYTONA_TARGET) config.daytonaTarget = env.DAYTONA_TARGET;
