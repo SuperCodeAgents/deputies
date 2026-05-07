@@ -12,7 +12,7 @@ import { SlackCompletionCallbackSender } from './integrations/slack/callback-sen
 import { SlackRunProgressNotifier } from './integrations/slack/progress-notifier.js';
 import { FakeRunner } from './runner/fake.js';
 import type { Runner } from './runner/types.js';
-import { RealFlueAgentFactory } from './runner-flue/agent-factory.js';
+import { RealFlueAgentFactory, type RealFlueAgentFactoryOptions } from './runner-flue/agent-factory.js';
 import { loadOpenAICodexApiKey } from './runner-flue/openai-codex-auth.js';
 import { FlueRunner } from './runner-flue/runner.js';
 import { PostgresFlueSessionStore } from './runner-flue/session-store.js';
@@ -140,17 +140,17 @@ async function createRunner(): Promise<Runner> {
   if (config.runner === 'fake') return new FakeRunner();
 
   const model = requireFlueModel(config);
-  const options = {
+  const options: RealFlueAgentFactoryOptions = {
     model,
   };
   if (model.startsWith('openai-codex/')) {
     const { apiKey } = await loadOpenAICodexApiKey(config.flueOpenaiCodexAuthFile);
-    Object.assign(options, { providers: { 'openai-codex': { apiKey } } });
+    options.providers = { 'openai-codex': { apiKey } };
   }
   if (config.flueSessionStore === 'postgres') {
     const sessionStore = new PostgresFlueSessionStore(requireDatabaseUrl(config));
     resources.push(sessionStore);
-    Object.assign(options, { sessionStore });
+    options.sessionStore = sessionStore;
   }
 
   return new FlueRunner(new RealFlueAgentFactory(options), { repositoryAccess: createRepositoryAccess() });
