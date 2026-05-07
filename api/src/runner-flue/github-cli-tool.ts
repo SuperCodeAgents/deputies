@@ -49,7 +49,7 @@ export function createGitHubCliTool(
     async execute(params, signal) {
       const args = validateArgs(params.args);
       const access = await resolveActiveRepositoryAccess(repository);
-      const configDir = await mkdtemp(join(tmpdir(), 'dev-deputies-gh-'));
+      const configDir = await mkdtemp(join(tmpdir(), 'deputies-gh-'));
       try {
         const runner = options.runner ?? runGitHubCli;
         const runnerInput: Parameters<GitHubCliRunner>[0] = { args, env: createGitHubCliEnv(access, configDir) };

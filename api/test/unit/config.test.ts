@@ -76,7 +76,7 @@ describe('loadConfig', () => {
         GITHUB_ALLOWED_REPOSITORIES: 'acme/widget, octo/*',
         GITHUB_ALLOWED_USERS: 'octocat,hubot',
         GITHUB_ALLOWED_ORGANIZATIONS: 'acme,octo',
-        GITHUB_TRIGGER_HANDLES: 'dev-deputies, @devdeputies',
+        GITHUB_TRIGGER_HANDLES: 'deputies, @deputy',
       }),
     ).toMatchObject({
       port: 4000,
@@ -121,7 +121,7 @@ describe('loadConfig', () => {
       githubAllowedRepositories: ['acme/widget', 'octo/*'],
       githubAllowedUsers: ['octocat', 'hubot'],
       githubAllowedOrganizations: ['acme', 'octo'],
-      githubTriggerHandles: ['dev-deputies', '@devdeputies'],
+      githubTriggerHandles: ['deputies', '@deputy'],
     });
   });
 
@@ -144,24 +144,24 @@ describe('loadConfig', () => {
   it('requires GitHub webhook allowlists unless unsafe allow-all is explicit', () => {
     expect(() => loadConfig({ GITHUB_WEBHOOK_SECRET: 'github-secret' })).toThrow('GitHub webhook allowlists are required');
     expect(() => loadConfig({ GITHUB_WEBHOOK_SECRET: 'github-secret', GITHUB_ALLOWED_USERS: 'octocat' })).toThrow('GITHUB_TRIGGER_HANDLES is required');
-    expect(loadConfig({ GITHUB_WEBHOOK_SECRET: 'github-secret', UNSAFE_ALLOW_ALL_GITHUB_USERS_AND_ORGS: 'true', GITHUB_TRIGGER_HANDLES: 'dev-deputies' })).toMatchObject({
+    expect(loadConfig({ GITHUB_WEBHOOK_SECRET: 'github-secret', UNSAFE_ALLOW_ALL_GITHUB_USERS_AND_ORGS: 'true', GITHUB_TRIGGER_HANDLES: 'deputies' })).toMatchObject({
       githubWebhookSecret: 'github-secret',
       unsafeAllowAllGithubUsersAndOrgs: true,
       githubAllowedUsers: [],
       githubAllowedOrganizations: [],
-      githubTriggerHandles: ['dev-deputies'],
+      githubTriggerHandles: ['deputies'],
     });
-    expect(loadConfig({ GITHUB_WEBHOOK_SECRET: 'github-secret', GITHUB_ALLOWED_USERS: 'octocat', GITHUB_TRIGGER_HANDLES: 'dev-deputies' })).toMatchObject({
+    expect(loadConfig({ GITHUB_WEBHOOK_SECRET: 'github-secret', GITHUB_ALLOWED_USERS: 'octocat', GITHUB_TRIGGER_HANDLES: 'deputies' })).toMatchObject({
       githubWebhookSecret: 'github-secret',
       unsafeAllowAllGithubUsersAndOrgs: false,
       githubAllowedUsers: ['octocat'],
-      githubTriggerHandles: ['dev-deputies'],
+      githubTriggerHandles: ['deputies'],
     });
-    expect(loadConfig({ GITHUB_WEBHOOK_SECRET: 'github-secret', GITHUB_ALLOWED_ORGANIZATIONS: 'acme', GITHUB_TRIGGER_HANDLES: 'dev-deputies' })).toMatchObject({
+    expect(loadConfig({ GITHUB_WEBHOOK_SECRET: 'github-secret', GITHUB_ALLOWED_ORGANIZATIONS: 'acme', GITHUB_TRIGGER_HANDLES: 'deputies' })).toMatchObject({
       githubWebhookSecret: 'github-secret',
       unsafeAllowAllGithubUsersAndOrgs: false,
       githubAllowedOrganizations: ['acme'],
-      githubTriggerHandles: ['dev-deputies'],
+      githubTriggerHandles: ['deputies'],
     });
   });
 

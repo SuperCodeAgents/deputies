@@ -301,8 +301,8 @@ it('shows callback delivery status and replays failed callbacks', async () => {
 
 it('preserves selected archived session and archived section after refresh', async () => {
   const archivedSession = { ...session, status: 'archived', title: 'Archived chosen' };
-  localStorage.setItem('dev-deputies-selected-session-id', archivedSession.id);
-  localStorage.setItem('dev-deputies-archived-sessions-open', 'true');
+  localStorage.setItem('deputies-selected-session-id', archivedSession.id);
+  localStorage.setItem('deputies-archived-sessions-open', 'true');
   mockApi({
     sessionOverride: archivedSession,
     sessions: [
@@ -324,8 +324,8 @@ it('keeps the new-session page selected after archiving and refreshing', async (
   fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
 
   expect(await screen.findByText('What needs doing?')).toBeInTheDocument();
-  expect(localStorage.getItem('dev-deputies-selected-session-id')).toBeNull();
-  expect(localStorage.getItem('dev-deputies-new-session-selected')).toBe('true');
+  expect(localStorage.getItem('deputies-selected-session-id')).toBeNull();
+  expect(localStorage.getItem('deputies-new-session-selected')).toBe('true');
 
   first.unmount();
   render(<App />);

@@ -15,7 +15,7 @@ describe.skipIf(process.env.RUN_SLACK_EMULATE_TEST !== 'true')('Slack emulate', 
           team: { name: 'Test Workspace', domain: 'test-workspace' },
           users: [{ name: 'developer', real_name: 'Developer', email: 'dev@example.com' }],
           channels: [{ name: 'general' }],
-          bots: [{ name: 'dev-deputies' }],
+          bots: [{ name: 'deputies' }],
         },
       },
     });

@@ -63,7 +63,7 @@ describe('GitHub webhook integration', () => {
           return [
             { id: 10, author: 'alice', body: 'Extra repro detail', createdAt: '2026-05-06T00:00:00Z' },
             { id: 11, author: 'open-inspect-sidpalas', authorType: 'Bot', body: 'Deputy response that should be hidden' },
-            { id: 99, author: 'octocat', body: '@dev-deputies please handle this' },
+            { id: 99, author: 'octocat', body: '@deputies please handle this' },
           ];
         },
       },
@@ -71,7 +71,7 @@ describe('GitHub webhook integration', () => {
 
     const accepted = await github.handle({
       headers: { deliveryId: 'delivery-1', event: 'issue_comment' },
-      payload: issueCommentPayload({ body: '@dev-deputies please handle this' }),
+      payload: issueCommentPayload({ body: '@deputies please handle this' }),
     });
 
     expect(accepted.type).toBe('accepted');
@@ -81,9 +81,9 @@ describe('GitHub webhook integration', () => {
     expect(messages[0]!.prompt).toContain('Prior unprocessed GitHub comments:\n---');
     expect(messages[0]!.prompt).toContain('[alice at 2026-05-06T00:00:00Z]:');
     expect(messages[0]!.prompt).toContain('Extra repro detail');
-    expect(messages[0]!.prompt).toContain('Current tagged GitHub message:\n---\n[octocat]: @dev-deputies please handle this');
+    expect(messages[0]!.prompt).toContain('Current tagged GitHub message:\n---\n[octocat]: @deputies please handle this');
     expect(messages[0]!.prompt).not.toContain('Deputy response that should be hidden');
-    expect(messages[0]!.prompt).not.toContain('[octocat]: @dev-deputies please handle this\n\nPrior unprocessed GitHub comments');
+    expect(messages[0]!.prompt).not.toContain('[octocat]: @deputies please handle this\n\nPrior unprocessed GitHub comments');
     expect(messages[0]!.context?.github).toMatchObject({ commentId: 99, includedCommentIds: [10] });
   });
 
@@ -98,13 +98,13 @@ describe('GitHub webhook integration', () => {
           if (fetches === 1) {
             return [
               { id: 10, author: 'alice', body: 'Already processed' },
-              { id: 99, author: 'octocat', body: '@dev-deputies please handle this' },
+              { id: 99, author: 'octocat', body: '@deputies please handle this' },
             ];
           }
           return [
             { id: 10, author: 'alice', body: 'Already processed' },
             { id: 11, author: 'bob', body: 'New context' },
-            { id: 100, author: 'octocat', body: '@dev-deputies follow up' },
+            { id: 100, author: 'octocat', body: '@deputies follow up' },
           ];
         },
       },
@@ -112,11 +112,11 @@ describe('GitHub webhook integration', () => {
 
     const first = await github.handle({
       headers: { deliveryId: 'delivery-1', event: 'issue_comment' },
-      payload: issueCommentPayload({ body: '@dev-deputies please handle this' }),
+      payload: issueCommentPayload({ body: '@deputies please handle this' }),
     });
     const second = await github.handle({
       headers: { deliveryId: 'delivery-2', event: 'issue_comment' },
-      payload: issueCommentPayload({ body: '@dev-deputies follow up', commentId: 100 }),
+      payload: issueCommentPayload({ body: '@deputies follow up', commentId: 100 }),
     });
 
     expect(first.type).toBe('accepted');
@@ -197,7 +197,7 @@ describe('GitHub webhook integration', () => {
     const store = new MemoryStore();
     const services = createServices(store);
     const github = new GitHubWebhookService(store, services.sessions, services.messages, {
-      triggerHandles: ['dev-deputies'],
+      triggerHandles: ['deputies'],
     });
 
     const missingTag = await github.handle({
@@ -206,7 +206,7 @@ describe('GitHub webhook integration', () => {
     });
     const tagged = await github.handle({
       headers: { deliveryId: 'delivery-2', event: 'issue_comment' },
-      payload: issueCommentPayload({ body: '@dev-deputies please handle this.' }),
+      payload: issueCommentPayload({ body: '@deputies please handle this.' }),
     });
 
     expect(missingTag).toEqual({ ok: true, type: 'ignored', reason: 'missing_trigger_handle' });
@@ -254,9 +254,9 @@ describe('GitHub webhook integration', () => {
       GITHUB_WEBHOOK_SECRET: secret,
       GITHUB_ALLOWED_USERS: 'octocat',
       GITHUB_ALLOWED_ORGANIZATIONS: 'acme',
-      GITHUB_TRIGGER_HANDLES: 'dev-deputies',
+      GITHUB_TRIGGER_HANDLES: 'deputies',
     }), createServices(store));
-    const body = JSON.stringify(issuePayload({ title: '@dev-deputies fix the flaky test' }));
+    const body = JSON.stringify(issuePayload({ title: '@deputies fix the flaky test' }));
 
     const response = await app.request('/webhooks/github/events', {
       method: 'POST',
@@ -386,7 +386,7 @@ function pullRequestReviewCommentPayload() {
     },
     comment: {
       id: 100,
-      body: '@dev-deputies please fix this edge case.',
+      body: '@deputies please fix this edge case.',
       html_url: 'https://github.com/acme/widget/pull/42#discussion_r100',
       user: { login: 'octocat' },
       path: 'src/app.ts',
@@ -410,7 +410,7 @@ function pullRequestReviewPayload() {
     },
     review: {
       id: 101,
-      body: '@dev-deputies Please update this before merge.',
+      body: '@deputies Please update this before merge.',
       state: 'commented',
       user: { login: 'octocat' },
     },

@@ -22,7 +22,7 @@ describe('GitHub CLI Flue tool', () => {
       GH_REPO: 'manaflow-ai/manaflow',
       NO_COLOR: '1',
     });
-    expect(calls[0]?.env.GH_CONFIG_DIR).toContain('dev-deputies-gh-');
+    expect(calls[0]?.env.GH_CONFIG_DIR).toContain('deputies-gh-');
   });
 
   it('rejects auth and clone escape-hatch commands', async () => {

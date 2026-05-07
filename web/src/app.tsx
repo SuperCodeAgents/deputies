@@ -41,10 +41,10 @@ import { Input } from './components/ui/input.js';
 import { Textarea } from './components/ui/textarea.js';
 import { cn } from './lib/utils.js';
 
-const tokenStorageKey = 'dev-deputies-api-token';
-const selectedSessionStorageKey = 'dev-deputies-selected-session-id';
-const newSessionSelectedStorageKey = 'dev-deputies-new-session-selected';
-const archivedSessionsOpenStorageKey = 'dev-deputies-archived-sessions-open';
+const tokenStorageKey = 'deputies-api-token';
+const selectedSessionStorageKey = 'deputies-selected-session-id';
+const newSessionSelectedStorageKey = 'deputies-new-session-selected';
+const archivedSessionsOpenStorageKey = 'deputies-archived-sessions-open';
 const threadAutoFollowThreshold = 160;
 
 function loadStoredToken(): string {
