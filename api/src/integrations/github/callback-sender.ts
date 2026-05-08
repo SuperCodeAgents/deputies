@@ -23,8 +23,19 @@ export class GitHubCompletionCallbackSender implements CompletionCallbackSender 
     const repositoryAccess = await this.access.getRepositoryAccess({ owner, repo });
     const body = payload.text.trim();
     if (!body || isAcknowledgementOnly(body)) return;
-    await this.client.createIssueComment({ owner, repo, issueNumber, token: repositoryAccess.auth.token, body });
+    await this.client.createIssueComment({ owner, repo, issueNumber, token: repositoryAccess.auth.token, body: appendGitHubFooter(body, callback.target) });
   }
+}
+
+function appendGitHubFooter(body: string, target: Record<string, unknown>): string {
+  const footer: string[] = [];
+  if (target.includeSessionLink === true && typeof target.sessionUrl === 'string' && target.sessionUrl) {
+    footer.push(`Link to session: ${target.sessionUrl}`);
+  }
+  if (typeof target.replyHint === 'string' && target.replyHint) {
+    footer.push(`:information_source: ${target.replyHint}`);
+  }
+  return footer.length ? `${body}\n\n---\n${footer.join('\n')}` : body;
 }
 
 function isAcknowledgementOnly(body: string): boolean {

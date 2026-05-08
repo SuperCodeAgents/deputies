@@ -1,5 +1,7 @@
+export type SlackBlock = Record<string, unknown>;
+
 export type SlackReplyClient = {
-  postThreadReply(input: { channel: string; threadTs: string; text: string }): Promise<{ ok: boolean; ts?: string; error?: string }>;
+  postThreadReply(input: { channel: string; threadTs: string; text: string; blocks?: SlackBlock[] }): Promise<{ ok: boolean; ts?: string; error?: string }>;
 };
 
 export type SlackReactionClient = {
@@ -20,7 +22,7 @@ export class SlackClient implements SlackReplyClient, SlackReactionClient, Slack
     private readonly options: { apiBaseUrl: string; botToken?: string },
   ) {}
 
-  async postThreadReply(input: { channel: string; threadTs: string; text: string }): Promise<{ ok: boolean; ts?: string; error?: string }> {
+  async postThreadReply(input: { channel: string; threadTs: string; text: string; blocks?: SlackBlock[] }): Promise<{ ok: boolean; ts?: string; error?: string }> {
     if (!this.options.botToken) throw new Error('SLACK_BOT_TOKEN is required to post Slack replies');
     const response = await fetch(`${this.options.apiBaseUrl.replace(/\/$/, '')}/chat.postMessage`, {
       method: 'POST',
@@ -28,7 +30,7 @@ export class SlackClient implements SlackReplyClient, SlackReactionClient, Slack
         authorization: `Bearer ${this.options.botToken}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ channel: input.channel, thread_ts: input.threadTs, text: input.text }),
+      body: JSON.stringify({ channel: input.channel, thread_ts: input.threadTs, text: input.text, ...(input.blocks ? { blocks: input.blocks } : {}) }),
     });
     return (await response.json()) as { ok: boolean; ts?: string; error?: string };
   }

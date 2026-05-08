@@ -44,7 +44,7 @@ describe('GitHub webhook integration', () => {
     expect(messages).toHaveLength(2);
     expect(messages.map((message) => message.source)).toEqual(['github', 'github']);
     expect(messages[0]!.context?.repository).toEqual({ provider: 'github', owner: 'acme', repo: 'widget' });
-    expect(messages[0]!.context?.callback).toEqual({ type: 'github', owner: 'acme', repo: 'widget', issueNumber: 42 });
+    expect(messages[0]!.context?.callback).toMatchObject({ type: 'github', owner: 'acme', repo: 'widget', issueNumber: 42 });
     expect(messages[0]!.prompt).toContain('GitHub webhook context:\n---');
     expect(messages[0]!.prompt).toContain('Event: issues.opened');
     expect(messages[0]!.prompt).toContain('Repository: acme/widget');
@@ -357,9 +357,19 @@ describe('GitHub webhook integration', () => {
       headers: { deliveryId: 'delivery-2', event: 'issue_comment' },
       payload: issueCommentPayload({ body: '@deputies please handle this.' }),
     });
+    const bare = await github.handle({
+      headers: { deliveryId: 'delivery-3', event: 'issue_comment' },
+      payload: issueCommentPayload({ body: 'deputies please handle this too.' }),
+    });
+    const substring = await github.handle({
+      headers: { deliveryId: 'delivery-4', event: 'issue_comment' },
+      payload: issueCommentPayload({ body: 'This deputieship issue is unrelated.' }),
+    });
 
     expect(missingTag).toEqual({ ok: true, type: 'ignored', reason: 'missing_trigger_phrase' });
     expect(tagged.type).toBe('accepted');
+    expect(bare.type).toBe('accepted');
+    expect(substring).toEqual({ ok: true, type: 'ignored', reason: 'missing_trigger_phrase' });
     expect(await store.listSessions()).toHaveLength(1);
   });
 
@@ -484,6 +494,68 @@ describe('GitHub webhook integration', () => {
 
     expect(comments).toHaveLength(1);
     expect(comments[0]).toMatchObject({ body: 'I found the failing path and opened PR #12 with a fix.' });
+  });
+
+  it('appends session links and reply hints to GitHub completion comments', async () => {
+    const comments: unknown[] = [];
+    const sender = new GitHubCompletionCallbackSender({
+      async createIssueComment(input) {
+        comments.push(input);
+        return { id: 1 };
+      },
+    }, {
+      async getRepositoryAccess() {
+        return { auth: { token: 'ghs_token' } };
+      },
+    });
+
+    await sender.deliver({
+      type: 'github',
+      target: {
+        owner: 'acme',
+        repo: 'widget',
+        issueNumber: 42,
+        includeSessionLink: true,
+        sessionUrl: 'https://deputies.example?session=session-1',
+        replyHint: 'Include the phrase `/deputies` to continue here.',
+      },
+    }, completionPayload('I fixed the issue.'));
+
+    expect(comments).toHaveLength(1);
+    expect(comments[0]).toMatchObject({
+      body: 'I fixed the issue.\n\n---\nLink to session: https://deputies.example?session=session-1\n:information_source: Include the phrase `/deputies` to continue here.',
+    });
+  });
+
+  it('keeps GitHub callback footer rendering out of band from payload text', async () => {
+    const comments: unknown[] = [];
+    const sender = new GitHubCompletionCallbackSender({
+      async createIssueComment(input) {
+        comments.push(input);
+        return { id: 1 };
+      },
+    }, {
+      async getRepositoryAccess() {
+        return { auth: { token: 'ghs_token' } };
+      },
+    });
+
+    await sender.deliver({
+      type: 'github',
+      target: {
+        owner: 'acme',
+        repo: 'widget',
+        issueNumber: 42,
+        includeSessionLink: true,
+        sessionUrl: 'https://deputies.example?session=session-1',
+        replyHint: 'Include the phrase `/deputies` to continue here.',
+      },
+    }, completionPayload('No work was performed.'));
+
+    expect(comments).toHaveLength(1);
+    expect(comments[0]).toMatchObject({
+      body: 'No work was performed.\n\n---\nLink to session: https://deputies.example?session=session-1\n:information_source: Include the phrase `/deputies` to continue here.',
+    });
   });
 });
 

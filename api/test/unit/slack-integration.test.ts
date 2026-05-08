@@ -3,6 +3,7 @@ import { createServer, createServices } from '../../src/app/server.js';
 import { loadConfig } from '../../src/config/index.js';
 import { maxPriorContextItems, maxPromptTextCharacters } from '../../src/integrations/prompt-bounds.js';
 import { createSlackSignature, verifySlackSignature } from '../../src/integrations/slack/auth.js';
+import { SlackCompletionCallbackSender } from '../../src/integrations/slack/callback-sender.js';
 import { SlackIntegrationService } from '../../src/integrations/slack/service.js';
 import { MemoryStore } from '../../src/store/memory.js';
 
@@ -18,6 +19,69 @@ describe('Slack integration', () => {
     expect(verifySlackSignature({ signature, timestamp, body, signingSecret, nowSeconds: 1800000000 })).toBe(true);
     expect(verifySlackSignature({ signature: `${signature}0`, timestamp, body, signingSecret, nowSeconds: 1800000000 })).toBe(false);
     expect(verifySlackSignature({ signature, timestamp, body, signingSecret, nowSeconds: 1800001000 })).toBe(false);
+  });
+
+  it('appends session links and reply hints to Slack completion callbacks', async () => {
+    const replies: Array<{ channel: string; threadTs: string; text: string; blocks?: unknown[] }> = [];
+    const sender = new SlackCompletionCallbackSender({
+      async postThreadReply(input) {
+        replies.push(input);
+        return { ok: true };
+      },
+    });
+
+    await sender.deliver(
+      {
+        type: 'slack',
+        target: {
+          channel: 'C123',
+          threadTs: '1710000000.000100',
+          includeSessionLink: true,
+          sessionUrl: 'https://deputies.example?session=session-1',
+          replyHint: 'Tag @deputies in replies to continue here.',
+        },
+      },
+      completionPayload('Done.'),
+    );
+
+    expect(replies).toEqual([{ channel: 'C123', threadTs: '1710000000.000100', text: 'Done.\n\nLink to session: https://deputies.example?session=session-1\n---\n\nTag @deputies in replies to continue here.', blocks: [
+      { type: 'section', text: { type: 'mrkdwn', text: 'Done.' } },
+      { type: 'divider' },
+      { type: 'section', text: { type: 'mrkdwn', text: 'Link to session: https://deputies.example?session=session-1' } },
+      { type: 'context', elements: [{ type: 'mrkdwn', text: ':information_source: Tag @deputies in replies to continue here.' }] },
+    ] }]);
+  });
+
+  it('keeps Slack callback footer rendering out of band from payload text', async () => {
+    const replies: Array<{ text: string; blocks?: unknown[] }> = [];
+    const sender = new SlackCompletionCallbackSender({
+      async postThreadReply(input) {
+        replies.push(input);
+        return { ok: true };
+      },
+    });
+
+    await sender.deliver(
+      {
+        type: 'slack',
+        target: {
+          channel: 'C123',
+          threadTs: '1710000000.000100',
+          includeSessionLink: true,
+          sessionUrl: 'https://deputies.example?session=session-1',
+          replyHint: 'Tag @deputies in replies to continue here.',
+        },
+      },
+      completionPayload('No work was performed.'),
+    );
+
+    expect(replies[0]?.text).toBe('No work was performed.\n\nLink to session: https://deputies.example?session=session-1\n---\n\nTag @deputies in replies to continue here.');
+    expect(replies[0]?.blocks).toEqual([
+      { type: 'section', text: { type: 'mrkdwn', text: 'No work was performed.' } },
+      { type: 'divider' },
+      { type: 'section', text: { type: 'mrkdwn', text: 'Link to session: https://deputies.example?session=session-1' } },
+      { type: 'context', elements: [{ type: 'mrkdwn', text: ':information_source: Tag @deputies in replies to continue here.' }] },
+    ]);
   });
 
   it('creates sessions from app mentions and reuses Slack threads for follow-ups', async () => {
@@ -60,7 +124,7 @@ describe('Slack integration', () => {
     expect(messages[0]!.prompt).toContain('Prior unprocessed messages from the Slack thread:');
     expect(messages[0]!.prompt).toContain('Prior Slack thread messages were unavailable: Slack thread history client is not configured.');
     expect(messages[0]!.prompt).toContain('Current tagged Slack message:');
-    expect(messages[0]!.context?.callback).toEqual({ type: 'slack', channel: 'C123', threadTs: '1710000000.000100', messageTs: '1710000000.000100' });
+    expect(messages[0]!.context?.callback).toMatchObject({ type: 'slack', channel: 'C123', threadTs: '1710000000.000100', messageTs: '1710000000.000100', replyHint: 'Tag @deputies in replies to continue here.' });
     expect(reactions).toEqual([
       { channel: 'C123', timestamp: '1710000000.000100', name: 'eyes' },
       { channel: 'C123', timestamp: '1710000001.000100', name: 'eyes' },
@@ -578,6 +642,17 @@ function postSignedSlack(url: string, body: string): Promise<Response> {
     },
     body,
   });
+}
+
+function completionPayload(text: string) {
+  return {
+    event: 'message_completed' as const,
+    sessionId: 'session-1',
+    runId: 'run-1',
+    messageId: 'message-1',
+    text,
+    artifacts: [],
+  };
 }
 
 async function listen(server: Server): Promise<string> {

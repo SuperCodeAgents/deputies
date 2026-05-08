@@ -247,11 +247,13 @@ export function createApp(config: AppConfig, services = createServices()) {
             allowedTeamIds: config.slackAllowedTeamIds,
             allowedChannelIds: config.slackAllowedChannelIds,
             allowedUserIds: config.slackAllowedUserIds,
+            ...(config.webBaseUrl ? { webBaseUrl: config.webBaseUrl } : {}),
           }
         : {
             allowedTeamIds: config.slackAllowedTeamIds,
             allowedChannelIds: config.slackAllowedChannelIds,
             allowedUserIds: config.slackAllowedUserIds,
+            ...(config.webBaseUrl ? { webBaseUrl: config.webBaseUrl } : {}),
           };
       const result = await new SlackIntegrationService(services.store, services.sessions, services.messages, slackOptions).handle(payload);
       if (result.type === 'challenge') return c.json({ challenge: result.challenge });
@@ -292,6 +294,7 @@ export function createApp(config: AppConfig, services = createServices()) {
       ...(services.githubReactionSender ? { reactionSender: services.githubReactionSender } : {}),
       ...(services.githubIssueContextFetcher ? { issueContextFetcher: services.githubIssueContextFetcher } : {}),
       ...(services.githubArchivedSessionNotifier ? { archivedSessionNotifier: services.githubArchivedSessionNotifier } : {}),
+      ...(config.webBaseUrl ? { webBaseUrl: config.webBaseUrl } : {}),
     }).handle({ headers, payload });
     return c.json({ ok: true, type: result.type, ...('reason' in result ? { reason: result.reason } : {}) }, result.type === 'accepted' ? 202 : 200);
   });

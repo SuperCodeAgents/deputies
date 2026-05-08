@@ -52,6 +52,10 @@ function loadStoredToken(): string {
   return localStorage.getItem(tokenStorageKey) ?? '';
 }
 
+function loadInitialSelectedSessionId(): string {
+  return new URLSearchParams(window.location.search).get('session') ?? localStorage.getItem(selectedSessionStorageKey) ?? '';
+}
+
 function isThreadNearBottom(container: HTMLElement): boolean {
   return container.scrollHeight - container.scrollTop - container.clientHeight <= threadAutoFollowThreshold;
 }
@@ -61,7 +65,7 @@ export function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState(loadStoredToken);
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<string>(() => localStorage.getItem(selectedSessionStorageKey) ?? '');
+  const [selectedSessionId, setSelectedSessionId] = useState<string>(loadInitialSelectedSessionId);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isCreatingThread, setIsCreatingThread] = useState(() => localStorage.getItem(newSessionSelectedStorageKey) === 'true');
@@ -412,6 +416,7 @@ export function App() {
     setToken('');
     setDraftToken('');
     localStorage.removeItem(selectedSessionStorageKey);
+    clearSessionSearchParam();
     localStorage.removeItem(newSessionSelectedStorageKey);
     setSessions([]);
     setSessionsLoaded(false);
@@ -426,6 +431,7 @@ export function App() {
   function startNewThread() {
     setSidebarCollapsed(false);
     localStorage.removeItem(selectedSessionStorageKey);
+    clearSessionSearchParam();
     localStorage.setItem(newSessionSelectedStorageKey, 'true');
     setSelectedSessionId('');
     setIsCreatingThread(true);
@@ -441,6 +447,7 @@ export function App() {
   function selectSession(sessionId: string) {
     autoScrolledSessionId.current = '';
     localStorage.setItem(selectedSessionStorageKey, sessionId);
+    setSessionSearchParam(sessionId);
     localStorage.removeItem(newSessionSelectedStorageKey);
     setSelectedSessionId(sessionId);
     setIsCreatingThread(false);
@@ -481,6 +488,7 @@ export function App() {
     setSessions((current) => current.map((candidate) => (candidate.id === session.id ? session : candidate)));
     if (selectedSessionId === session.id) {
       localStorage.removeItem(selectedSessionStorageKey);
+      clearSessionSearchParam();
       localStorage.setItem(newSessionSelectedStorageKey, 'true');
       setSelectedSessionId('');
       setIsCreatingThread(true);
@@ -677,6 +685,18 @@ export function App() {
       )}
     </main>
   );
+}
+
+function setSessionSearchParam(sessionId: string) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('session', sessionId);
+  window.history.replaceState({}, '', url);
+}
+
+function clearSessionSearchParam() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('session');
+  window.history.replaceState({}, '', url);
 }
 
 function LocalSandboxWarning() {

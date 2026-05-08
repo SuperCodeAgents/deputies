@@ -195,13 +195,27 @@ function getCompletionCallback(context: Record<string, unknown> | undefined): Co
     const target: Record<string, unknown> = { channel, threadTs };
     const messageTs = 'messageTs' in callback ? callback.messageTs : undefined;
     if (typeof messageTs === 'string' && messageTs) target.messageTs = messageTs;
+    copyExternalReplyMetadata(callback, target);
     return { type: 'slack', target };
   }
   const owner = 'owner' in callback ? callback.owner : undefined;
   const repo = 'repo' in callback ? callback.repo : undefined;
   const issueNumber = 'issueNumber' in callback ? callback.issueNumber : undefined;
   if (type === 'github' && typeof owner === 'string' && owner && typeof repo === 'string' && repo && typeof issueNumber === 'number' && Number.isInteger(issueNumber) && issueNumber > 0) {
-    return { type: 'github', target: { owner, repo, issueNumber } };
+    const target: Record<string, unknown> = { owner, repo, issueNumber };
+    copyExternalReplyMetadata(callback, target);
+    return { type: 'github', target };
   }
   return null;
+}
+
+function copyExternalReplyMetadata(source: object, target: Record<string, unknown>): void {
+  const sessionUrl = 'sessionUrl' in source ? source.sessionUrl : undefined;
+  if (typeof sessionUrl === 'string' && sessionUrl) target.sessionUrl = sessionUrl;
+
+  const replyHint = 'replyHint' in source ? source.replyHint : undefined;
+  if (typeof replyHint === 'string' && replyHint) target.replyHint = replyHint;
+
+  const includeSessionLink = 'includeSessionLink' in source ? source.includeSessionLink : undefined;
+  if (includeSessionLink === true) target.includeSessionLink = true;
 }

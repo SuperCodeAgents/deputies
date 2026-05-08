@@ -30,6 +30,7 @@ export type GitHubWebhookServiceOptions = {
   reactionSender?: Pick<GitHubReactionSender, 'addEyes'>;
   issueContextFetcher?: Pick<GitHubIssueContextFetcher, 'listIssueComments'>;
   archivedSessionNotifier?: Pick<GitHubArchivedSessionNotifier, 'postNotice' | 'postRecoveryAcknowledgement'>;
+  webBaseUrl?: string;
 };
 
 export type GitHubWebhookResult =
@@ -200,7 +201,14 @@ export class GitHubWebhookService {
           ...(accepted.commentId ? { commentId: accepted.commentId } : {}),
           includedCommentIds: promptThreadContext.comments.map((comment) => comment.id),
         },
-        callback: githubCallbackTarget({ owner: accepted.owner, repo: accepted.repo, issueNumber: accepted.number }),
+        callback: githubCallbackTarget({
+          owner: accepted.owner,
+          repo: accepted.repo,
+          issueNumber: accepted.number,
+          ...githubReplyHint(this.options.triggerPhrases),
+          ...(existingMessageCount === 0 ? { includeSessionLink: true } : {}),
+          ...callbackSessionUrl(session.id, this.options.webBaseUrl),
+        }),
       },
     });
 
@@ -337,7 +345,7 @@ export class GitHubWebhookService {
           ...(event.commentId ? { commentId: event.commentId } : {}),
           includedCommentIds: [],
         },
-        callback: githubCallbackTarget({ owner: event.owner, repo: event.repo, issueNumber: event.number }),
+        callback: githubCallbackTarget({ owner: event.owner, repo: event.repo, issueNumber: event.number, ...githubReplyHint(this.options.triggerPhrases), ...callbackSessionUrl(session.id, this.options.webBaseUrl) }),
       },
     });
   }
@@ -542,6 +550,18 @@ function githubExternalThreadId(event: Pick<AcceptedGitHubEvent, 'owner' | 'repo
   return `${event.owner}/${event.repo}#${event.number}`;
 }
 
+function callbackSessionUrl(sessionId: string, webBaseUrl: string | undefined): { sessionUrl?: string } {
+  if (!webBaseUrl) return {};
+  const url = new URL(webBaseUrl);
+  url.searchParams.set('session', sessionId);
+  return { sessionUrl: url.toString() };
+}
+
+function githubReplyHint(triggerPhrases: string[] | undefined): { replyHint?: string } {
+  const phrase = triggerPhrases?.[0];
+  return phrase ? { replyHint: `Include the phrase \`${phrase}\` to continue here.` } : {};
+}
+
 function githubSessionTitle(event: AcceptedGitHubEvent): string {
   return `GitHub ${event.itemType} #${event.number}: ${event.title ?? `${event.owner}/${event.repo}`}`;
 }
@@ -613,7 +633,15 @@ function triggerPhraseMatches(text: string, phrase: string): boolean {
   if (!normalized) return false;
   if (normalized.startsWith('@') || normalized.startsWith('/') || normalized.endsWith(':')) return text.includes(normalized);
   if (normalized.includes('/')) return text.includes(`@${normalized}`) || text.includes(normalized);
-  return text.includes(`@${normalized}`) || text.includes(`/${normalized}`) || text.includes(`${normalized}:`);
+  return text.includes(`@${normalized}`) || text.includes(`/${normalized}`) || text.includes(`${normalized}:`) || phraseBoundaryMatches(text, normalized);
+}
+
+function phraseBoundaryMatches(text: string, phrase: string): boolean {
+  return new RegExp(`(^|[^a-z0-9_-])${escapeRegExp(phrase)}($|[^a-z0-9_-])`, 'i').test(text);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function githubEventText(event: AcceptedGitHubEvent): string {

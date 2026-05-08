@@ -27,6 +27,7 @@ export type SlackIntegrationOptions = {
   allowedTeamIds?: string[];
   allowedChannelIds?: string[];
   allowedUserIds?: string[];
+  webBaseUrl?: string;
 };
 
 export type HandleSlackEventResult =
@@ -119,7 +120,13 @@ export class SlackIntegrationService {
           type: accepted.type,
           includedThreadTs: promptThreadContext.messages.map((message) => message.ts),
         },
-        callback: slackCallbackTarget({ channel: accepted.channel, threadTs: accepted.threadTs, messageTs: accepted.ts }),
+        callback: slackCallbackTarget({
+          channel: accepted.channel,
+          threadTs: accepted.threadTs,
+          messageTs: accepted.ts,
+          ...(includeChannelContext ? { includeSessionLink: true } : {}),
+          ...callbackSessionUrl(session.id, this.options.webBaseUrl),
+        }),
       },
     });
 
@@ -218,7 +225,7 @@ export class SlackIntegrationService {
         source: 'slack',
         includedArchivedMessageIds: archivedMessages.map((message) => message.id),
         slack: { teamId: event.teamId, channel: event.channel, user: event.user, ts: event.ts, threadTs: event.threadTs, eventId: event.eventId, type: event.type, includedThreadTs: [] },
-        callback: slackCallbackTarget({ channel: event.channel, threadTs: event.threadTs, messageTs: event.ts }),
+        callback: slackCallbackTarget({ channel: event.channel, threadTs: event.threadTs, messageTs: event.ts, ...callbackSessionUrl(session.id, this.options.webBaseUrl) }),
       },
     });
   }
@@ -315,6 +322,13 @@ export class SlackIntegrationService {
       title: slackSessionTitle(event),
     });
   }
+}
+
+function callbackSessionUrl(sessionId: string, webBaseUrl: string | undefined): { sessionUrl?: string } {
+  if (!webBaseUrl) return {};
+  const url = new URL(webBaseUrl);
+  url.searchParams.set('session', sessionId);
+  return { sessionUrl: url.toString() };
 }
 
 export class SlackIntegrationError extends Error {

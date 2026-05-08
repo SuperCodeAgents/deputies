@@ -47,6 +47,7 @@ AUTH_PROVIDER=github
 AUTH_SESSION_SECRET=replace-with-random-local-secret
 AUTH_COOKIE_SECURE=false
 AUTH_SUCCESS_REDIRECT_URL=http://localhost:5173
+WEB_BASE_URL=http://localhost:5173
 GITHUB_APP_CLIENT_ID=Iv1.example
 GITHUB_APP_CLIENT_SECRET=github-app-client-secret
 GITHUB_APP_CALLBACK_URL=http://localhost:3583/auth/oauth/github/callback
@@ -55,6 +56,8 @@ VITE_API_BASE_URL=http://localhost:3583
 ```
 
 For GitHub App login, configure the GitHub App's callback URL to exactly match `GITHUB_APP_CALLBACK_URL`. The same GitHub App can also provide runtime repository access through `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY`; those are separate values from the app's user-authorization client ID and client secret.
+
+Set `WEB_BASE_URL` to the externally reachable web UI origin when Slack/GitHub callbacks should include an “open session” link. The API appends `?session=<id>` to that URL, and the web UI opens the matching session when present.
 
 Set `AUTH_COOKIE_SECURE=true` only when the API is served over HTTPS. If it is enabled on plain `http://localhost`, the browser will not send the session cookie back.
 

@@ -88,6 +88,8 @@ Avoid a large abstract integration framework for now. Prefer small shared utilit
 
 Generic webhook auth is independent of product API auth. Product session routes can use explicit `API_AUTH_MODE=none|bearer|session`, but `POST /webhooks/generic/:sourceKey` always uses the bearer token configured for that webhook source in the database.
 
+External Slack and GitHub completion replies append source-specific operator hints at send time. The first completion reply for a mapped external thread also includes a session link when `WEB_BASE_URL` is configured; Slack renders this as Block Kit context text, and GitHub renders it as a Markdown `View session` link. These footers are integration output only; they are not added to prompts or assistant transcript text.
+
 The generic webhook is the first integration to implement.
 
 Route:
