@@ -1,11 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import type { EventService } from '../events/service.js';
 import type { RunnerResult } from '../runner/types.js';
-import type { AppStore, ArtifactRecord } from '../store/types.js';
+import type { ArtifactRecord, CreateArtifactRecord } from '../store/types.js';
+
+type ArtifactStore = {
+  createArtifact(record: CreateArtifactRecord): Promise<ArtifactRecord>;
+};
 
 export class ArtifactService {
   constructor(
-    private readonly store: AppStore,
+    private readonly store: ArtifactStore,
     private readonly events: EventService,
   ) {}
 

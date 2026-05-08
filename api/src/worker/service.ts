@@ -5,14 +5,18 @@ import type { EventService } from '../events/service.js';
 import type { Runner } from '../runner/types.js';
 import { SandboxLifecycleService } from '../sandbox/service.js';
 import type { SandboxProvider } from '../sandbox/types.js';
-import type { AppStore, ClaimedMessageBatch, MessageRecord, RunRecord } from '../store/types.js';
+import type { ArtifactRecord, CallbackStore, ClaimedMessageBatch, CreateArtifactRecord, MessageRecord, RunRecord, RunStore, SandboxStore, SessionStore } from '../store/types.js';
+
+type WorkerStore = RunStore & SessionStore & SandboxStore & CallbackStore & {
+  createArtifact(record: CreateArtifactRecord): Promise<ArtifactRecord>;
+};
 
 export type RunProgressNotifier = {
   onRunStarted?(input: { message: MessageRecord; run: RunRecord }): Promise<void>;
 };
 
 export type WorkerServiceOptions = {
-  store: AppStore;
+  store: WorkerStore;
   events: EventService;
   runner: Runner;
   runnerType: string;

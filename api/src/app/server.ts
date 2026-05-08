@@ -195,7 +195,7 @@ export function createApp(config: AppConfig, services = createServices()) {
   });
 
   app.get('/sessions', async (c) => {
-    const sessions = await services.store.listSessions();
+    const sessions = await services.sessions.list();
     return c.json({ sessions });
   });
 

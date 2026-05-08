@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { EventService } from '../events/service.js';
-import type { AppStore, SessionRecord } from '../store/types.js';
+import type { SessionRecord, SessionStore } from '../store/types.js';
 
 export type CreateSessionInput = {
   title?: string;
@@ -19,7 +19,7 @@ export class SessionServiceError extends Error {
 
 export class SessionService {
   constructor(
-    private readonly store: AppStore,
+    private readonly store: SessionStore,
     private readonly events: EventService,
   ) {}
 
@@ -46,6 +46,10 @@ export class SessionService {
 
   async get(id: string): Promise<SessionRecord | null> {
     return this.store.getSession(id);
+  }
+
+  async list(): Promise<SessionRecord[]> {
+    return this.store.listSessions();
   }
 
   async update(input: UpdateSessionInput): Promise<SessionRecord> {

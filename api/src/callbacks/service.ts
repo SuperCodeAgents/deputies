@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { EventService } from '../events/service.js';
 import type { RunnerResult } from '../runner/types.js';
-import type { AppStore, CallbackDeliveryRecord, ClaimedMessage } from '../store/types.js';
+import type { CallbackDeliveryRecord, CallbackStore, ClaimedMessage } from '../store/types.js';
 
 export type CompletionCallbackType = 'http' | 'slack' | 'github';
 
@@ -34,7 +34,7 @@ export type CallbackDispatcherOptions = {
 
 export class CallbackService {
   constructor(
-    private readonly store: AppStore,
+    private readonly store: CallbackStore,
     private readonly events?: EventService,
   ) {}
 
@@ -103,7 +103,7 @@ export class CallbackDispatcher {
   private readonly jitterRatio: number;
 
   constructor(
-    private readonly store: AppStore,
+    private readonly store: CallbackStore,
     private readonly events: EventService,
     private readonly senders: CompletionCallbackSender[] = [new HttpCompletionCallbackSender()],
     options: CallbackDispatcherOptions = {},

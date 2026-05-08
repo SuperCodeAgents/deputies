@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { EventService } from '../events/service.js';
-import type { AppStore, MessageRecord } from '../store/types.js';
+import type { MessageRecord, MessageStore } from '../store/types.js';
 
 export type EnqueueMessageInput = {
   sessionId: string;
@@ -15,7 +15,7 @@ export type RecordTranscriptEntryInput = EnqueueMessageInput & {
 
 export class MessageService {
   constructor(
-    private readonly store: AppStore,
+    private readonly store: MessageStore,
     private readonly events: EventService,
   ) {}
 

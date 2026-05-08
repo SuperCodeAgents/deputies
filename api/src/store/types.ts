@@ -249,25 +249,27 @@ export type CreateCallbackDeliveryRecord = {
   messageId?: string;
 };
 
-export interface AppStore {
-  upsertAuthUserForAccount(record: UpsertAuthUserForAccountRecord): Promise<AuthUserRecord>;
-  createAuthSession(record: AuthSessionRecord): Promise<AuthSessionRecord>;
-  getAuthUserBySession(input: { sessionId: string; now: Date }): Promise<AuthUserRecord | null>;
-  deleteAuthSession(sessionId: string): Promise<void>;
-
+export interface SessionStore {
   createSession(record: CreateSessionRecord): Promise<SessionRecord>;
   getSession(id: string): Promise<SessionRecord | null>;
   listSessions(): Promise<SessionRecord[]>;
   updateSession(record: SessionRecord): Promise<SessionRecord>;
   pauseSessionQueue(input: { sessionId: string; pausedAt: Date }): Promise<SessionRecord>;
   resumeSessionQueue(input: { sessionId: string }): Promise<SessionRecord>;
+}
 
+export interface MessageStore {
+  getSession(id: string): Promise<SessionRecord | null>;
+  updateSession(record: SessionRecord): Promise<SessionRecord>;
   nextMessageSequence(sessionId: string): Promise<number>;
   createMessage(record: CreateMessageRecord): Promise<MessageRecord>;
   getMessages(sessionId: string): Promise<MessageRecord[]>;
   updatePendingMessage(input: { sessionId: string; messageId: string; prompt: string }): Promise<MessageRecord | null>;
   cancelPendingMessage(input: { sessionId: string; messageId: string; cancelledAt: Date }): Promise<MessageRecord | null>;
+  requestRunCancellation(input: { sessionId: string; requestedAt: Date; error: string }): Promise<ClaimedMessageBatch | null>;
+}
 
+export interface RunStore {
   claimNextPendingMessage(input: {
     runId: string;
     runnerType: string;
@@ -291,26 +293,40 @@ export interface AppStore {
   failRun(input: { runId: string; failedAt: Date; error: string }): Promise<ClaimedMessage>;
   completeRunBatch(input: { runId: string; completedAt: Date }): Promise<ClaimedMessageBatch>;
   failRunBatch(input: { runId: string; failedAt: Date; error: string }): Promise<ClaimedMessageBatch>;
+}
 
+export interface SandboxStore {
   getActiveSandbox(sessionId: string, provider: string): Promise<SandboxRecord | null>;
   listActiveSandboxes(sessionId: string, provider: string): Promise<SandboxRecord[]>;
   listIdleSandboxes(input: { provider: string; idleBefore: Date; limit: number }): Promise<SandboxRecord[]>;
   listStoppableSandboxes(input: { provider: string; idleBefore: Date; limit: number }): Promise<SandboxRecord[]>;
   createSandbox(record: CreateSandboxRecord): Promise<SandboxRecord>;
   updateSandbox(record: SandboxRecord): Promise<SandboxRecord>;
+}
 
-  createArtifact(record: CreateArtifactRecord): Promise<ArtifactRecord>;
-  getArtifacts(sessionId: string): Promise<ArtifactRecord[]>;
+export interface CallbackStore {
   createCallbackDelivery(record: CreateCallbackDeliveryRecord): Promise<CallbackDeliveryRecord>;
   listCallbackDeliveries(input: { sessionId: string; messageId?: string }): Promise<CallbackDeliveryRecord[]>;
   claimDueCallbackDeliveries(input: { now: Date; limit: number }): Promise<CallbackDeliveryRecord[]>;
   markCallbackDeliverySent(input: { id: string; deliveredAt: Date }): Promise<CallbackDeliveryRecord>;
   markCallbackDeliveryFailed(input: { id: string; failedAt: Date; error: string; terminal: boolean; nextAttemptAt?: Date }): Promise<CallbackDeliveryRecord>;
   requestCallbackReplay(input: { sessionId: string; deliveryId: string; requestedAt: Date }): Promise<CallbackDeliveryRecord | null>;
+}
 
+export interface EventStore {
   nextEventSequence(sessionId: string): Promise<number>;
   appendEvent(event: NormalizedEvent & { sequence: number }): Promise<NormalizedEvent & { sequence: number }>;
   getEvents(sessionId: string, afterSequence?: number): Promise<Array<NormalizedEvent & { sequence: number }>>;
+}
+
+export interface AppStore extends SessionStore, MessageStore, RunStore, SandboxStore, CallbackStore, EventStore {
+  upsertAuthUserForAccount(record: UpsertAuthUserForAccountRecord): Promise<AuthUserRecord>;
+  createAuthSession(record: AuthSessionRecord): Promise<AuthSessionRecord>;
+  getAuthUserBySession(input: { sessionId: string; now: Date }): Promise<AuthUserRecord | null>;
+  deleteAuthSession(sessionId: string): Promise<void>;
+
+  createArtifact(record: CreateArtifactRecord): Promise<ArtifactRecord>;
+  getArtifacts(sessionId: string): Promise<ArtifactRecord[]>;
 
   createWebhookSource(record: CreateWebhookSourceRecord): Promise<WebhookSourceRecord>;
   getWebhookSource(key: string): Promise<WebhookSourceRecord | null>;

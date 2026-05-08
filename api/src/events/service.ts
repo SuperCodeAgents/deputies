@@ -1,5 +1,5 @@
 import type { NormalizedEvent, NormalizedEventType } from './types.js';
-import type { AppStore } from '../store/types.js';
+import type { EventStore } from '../store/types.js';
 
 type PersistedEvent = NormalizedEvent & { sequence: number };
 type EventSubscriber = (event: PersistedEvent) => void;
@@ -15,7 +15,7 @@ export type AppendEventInput = {
 export class EventService {
   private readonly subscribers = new Map<string, Set<EventSubscriber>>();
 
-  constructor(private readonly store: AppStore) {}
+  constructor(private readonly store: EventStore) {}
 
   async append(input: AppendEventInput): Promise<PersistedEvent> {
     const sequence = await this.store.nextEventSequence(input.sessionId);

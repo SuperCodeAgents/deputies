@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { EventService } from '../events/service.js';
-import type { AppStore, SandboxRecord } from '../store/types.js';
+import type { SandboxRecord, SandboxStore } from '../store/types.js';
 import type { SandboxHandle, SandboxProvider } from './types.js';
 
 export type EnsureSandboxResult = {
@@ -11,7 +11,7 @@ export type EnsureSandboxResult = {
 
 export class SandboxLifecycleService {
   constructor(
-    private readonly store: AppStore,
+    private readonly store: SandboxStore,
     private readonly provider: SandboxProvider,
   ) {}
 
@@ -90,7 +90,7 @@ export type SandboxCleanupResult = {
 
 export class SandboxCleanupService {
   constructor(
-    private readonly store: AppStore,
+    private readonly store: SandboxStore,
     private readonly events: EventService,
     private readonly provider: SandboxProvider,
   ) {}
