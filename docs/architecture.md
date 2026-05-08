@@ -56,7 +56,7 @@ Process lifecycle:
 - Postgres-backed stores are closed before process exit.
 - Shutdown has a bounded timeout so orchestrators such as Railway, ECS, and Kubernetes can terminate predictably.
 
-The code must behave correctly with multiple replicas even when deployed in `RUN_MODE=all`. Any code path that allocates durable work or processes work must use Postgres-backed concurrency controls from its first implementation. The current store already uses database-backed per-session sequence counters; run leases are introduced with the worker/runs phase.
+The code must behave correctly with multiple replicas even when deployed in `RUN_MODE=all`. Any code path that allocates durable work or processes work must use Postgres-backed concurrency controls from its first implementation. The current store uses database-backed per-session sequence counters and Postgres-backed run leases, including active/cancelling run exclusivity and stale lease recovery.
 
 ## Flue Node Deployment Implications
 
@@ -141,7 +141,7 @@ Current examples:
 
 - Repository clone/fetch uses `session.shell(..., { env: { GITHUB_AUTH_HEADER } })` because the side effect must create or update files inside the remote sandbox.
 - Dynamic repository selection uses the `repository` custom tool. `set` validates and persists session repo context, `list` helps the agent ask for clarification when uncertain, and `prepare` clones/fetches the selected repo inside the sandbox during the active run.
-- GitHub issue/comment-style operations use the `gh` custom tool because the side effect is a GitHub API action and the installation token can stay in trusted worker code.
+- GitHub issue/PR API operations can use the `gh` custom tool, but final GitHub issue/PR comments are intentionally blocked there and are posted through the callback layer to avoid duplicate external replies.
 - Authenticated git network operations such as push use the `git` custom tool. Its handler runs in trusted worker code, but it calls Flue agent-level `shell(...)` so the actual git process and object transfer happen inside the remote sandbox repository with command-scoped credentials while the prompt is active.
 - Local file edits and local commits should use sandbox tools such as `write`, `edit`, and `bash`; publishing those commits should use the authenticated `git` tool rather than trying to use `gh` API refs for sandbox-local objects.
 - Guardrails block raw GitHub Git Database API routes through `gh` and risky authenticated `git push` forms such as force, mirror, and delete refspecs.
@@ -170,41 +170,29 @@ This has practical consequences:
 
 ```txt
 api/src/
-  api/
   app/
+  auth/
+  callbacks/
+  config/
+  events/
+  artifacts/
   sessions/
   messages/
-  runs/
   worker/
+  runner/
   runner-flue/
   sandbox/
   integrations/
-    common/
     generic-webhook/
     github/
     slack/
-    linear/
-  events/
-  artifacts/
+    shared-utils.ts
+  repositories/
   store/
-  config/
-  auth/
-  prompts/
 
 web/
 
 docs/
-  background-agents/
-  architecture/
-  decisions/
-  deployment/
-
-agent-constraints/
-  planning.md
-  adversarial-review.md
-  implementation.md
-  testing.md
-  security.md
 ```
 
 ## Responsibility Split
@@ -215,11 +203,10 @@ agent-constraints/
 | `app` | Process bootstrap, run mode, graceful shutdown | Business logic |
 | `sessions` | Durable task workspace lifecycle and status | SQL details, Flue calls |
 | `messages` | Prompt/follow-up queue semantics | Running prompts |
-| `runs` | Active execution leases, retry state, run status | Integration-specific behavior |
 | `worker` | Claiming runnable work and coordinating execution | HTTP concerns |
 | `runner-flue` | Flue initialization and event normalization | Session persistence policy |
 | `sandbox` | Provider interface, lifecycle, health, cleanup | Prompt construction |
-| `integrations` | External webhook/auth normalization and callbacks | Direct agent execution |
+| `integrations` | External webhook/auth normalization, source-specific prompt rendering, and callbacks | Direct agent execution |
 | `events` | Append-only event log, replay, subscriber fanout | Business decisions |
 | `artifacts` | PRs, branches, screenshots, object links, reports | Raw runner protocol |
 | `store` | Postgres queries, migrations, transactions | Domain decisions |
@@ -255,7 +242,9 @@ Only `runner-flue` should import `@flue/sdk`. This keeps Flue replaceable and ma
 
 The HTTP transport uses Hono on Node via `@hono/node-server`. This keeps the API layer lightweight while giving us middleware hooks for auth, request IDs, CORS, body limits, and route grouping as integrations grow.
 
-Product session routes support `API_AUTH_MODE=none|bearer|session`; the mode is required so deployments fail to start instead of silently running open. `/health` remains public and reports the active mode and session provider. Bearer mode uses `API_BEARER_TOKEN` for machine/developer access. Session mode uses an opaque HTTP-only `dev_deputies_session` cookie backed by `auth_sessions`; the browser never receives user tokens or signed user payloads. `AUTH_PROVIDER=static` enables `POST /auth/login` with local static credentials, while `AUTH_PROVIDER=github` uses GitHub App user authorization through `GET /auth/oauth/github/start` and `GET /auth/oauth/github/callback`. GitHub App login uses `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, and `GITHUB_APP_CALLBACK_URL`; runtime repository access still uses `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` to mint installation tokens. Generic webhooks keep their own per-source bearer auth so external systems can be authorized independently from product API clients.
+Product session routes support `API_AUTH_MODE=none|bearer|session`; the mode is required so deployments fail to start instead of silently running open. `/health` remains public and reports the active mode and session provider. Bearer mode uses `API_BEARER_TOKEN` for machine/developer access. Session mode uses an opaque HTTP-only `dev_deputies_session` cookie backed by the configured `AppStore` (`auth_sessions` in Postgres for durable deployments); the browser never receives user tokens or signed user payloads. `AUTH_PROVIDER=static` enables `POST /auth/login` with local static credentials, while `AUTH_PROVIDER=github` uses GitHub App user authorization through `GET /auth/oauth/github/start` and `GET /auth/oauth/github/callback`. GitHub App login uses `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, and `GITHUB_APP_CALLBACK_URL`; runtime repository access still uses `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` to mint installation tokens. Generic webhooks keep their own per-source bearer auth so external systems can be authorized independently from product API clients.
+
+Current session-cookie auth is an API access gate only. Product sessions remain multiplayer/shared by default: authenticated users can list and open the same global session set, and sessions are not currently owned by or filtered to the authenticated user.
 
 Session-scoped product state is exposed through the product API. Artifact reads use `GET /sessions/:sessionId/artifacts` and are protected by the same product session auth as session, message, and event routes.
 
@@ -376,17 +365,18 @@ Unlike the minimal Flue example, production code should persist the provider san
 ```ts
 interface SandboxProvider {
   create(input: CreateSandboxInput): Promise<SandboxHandle>;
-  connect(id: string): Promise<SandboxHandle>;
-  destroy(id: string): Promise<void>;
-  snapshot?(id: string): Promise<SandboxSnapshot>;
-  restore?(snapshotId: string): Promise<SandboxHandle>;
+  connect(input: ConnectSandboxInput): Promise<SandboxHandle>;
+  start?(input: SandboxRef): Promise<void>;
+  stop?(input: SandboxRef): Promise<void>;
+  destroy(input: SandboxRef): Promise<void>;
+  health(input: SandboxRef): Promise<SandboxHealth>;
 }
 ```
 
 Provider choices should be config-driven:
 
 ```txt
-SANDBOX_PROVIDER=fake|local-docker|daytona|kubernetes|ecs
+SANDBOX_PROVIDER=fake|local|local-docker|daytona|kubernetes|ecs
 ```
 
 MVP should include `fake` for tests and one real provider.

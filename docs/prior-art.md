@@ -19,7 +19,7 @@ The goal is not to copy either system directly. The goal is to adopt the durable
 | Events | Append-only Postgres event log + SSE | DO event table + WebSocket fanout | Agent/tool stream plus source replies |
 | Sandbox abstraction | Provider interface + capabilities | Provider lifecycle manager for Modal/Daytona | Sandbox backend protocol selected by env |
 | Runtime bridge | Optional, provider-dependent | Required sandbox bridge/supervisor | Provider-specific backend wrappers |
-| Integrations | Thin adapters to common envelope | Slack/GitHub/Linear bots call control plane | Webhooks normalize into LangGraph thread IDs |
+| Integrations | Thin adapters with source-specific normalized inputs | Slack/GitHub/Linear bots call control plane | Webhooks normalize into LangGraph thread IDs |
 | Testing | Agent-first layered tests + emulate | Strong production code, infra-specific tests/docs | Python tests around utility/webhook behavior |
 
 ## What We Should Adopt From Open-Inspect
@@ -158,15 +158,16 @@ Use bridges where helpful, but let providers implement direct APIs when simpler.
 
 Open SWE maps Slack, Linear, and GitHub source objects to deterministic thread IDs.
 
-Adopt:
+Current storage keeps `source` separate from `external_id`, for example:
 
 ```txt
-slack:team:channel:thread_ts
-github:owner/repo:issue:123
-github:owner/repo:pr:456
-linear:issue_id
-webhook:source_key:external_thread_id
+source=slack, external_id=team:channel:thread_ts
+source=github, external_id=owner/repo#number
+source=<generic webhook source key>, external_id=<threadId>
+source=linear, external_id=issue_id  # planned
 ```
+
+The older `github:owner/repo:issue:123` and `github:owner/repo:pr:456` shapes remain useful design references, not current persisted values.
 
 This makes follow-ups route predictably to the same session.
 
@@ -286,7 +287,7 @@ Both systems work best where external inputs are normalized before hitting the a
 Adopt:
 
 ```txt
-raw webhook -> verified source event -> IntegrationEnvelope -> message -> prompt context -> runner
+raw webhook -> verified source event -> source-specific normalized input -> message -> prompt context -> runner
 ```
 
 This keeps integrations simple and makes tests easier.

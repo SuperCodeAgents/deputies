@@ -31,12 +31,12 @@ This is a living backlog for product, integration, runtime, and operations work.
 - Surface sandbox cleanup events and failures more clearly.
 - Expand callback delivery UI with filtering and clearer retry/failure history.
 - Improve archived-session browsing and bulk cleanup.
-- Playwright smoke tests for desktop/mobile flows.
+- Broader Playwright smoke tests for desktop/mobile flows beyond the existing responsive context-panel coverage.
 
 ## Agent Runtime
 
 - Agent authentication to external services through MCP, CLI credentials, API tokens, and short-lived provider tokens.
-- Codex Pro subscription authentication for OpenAI Codex provider support, likely via Pi's OAuth-backed subscription auth (`~/.pi/agent/auth.json`).
+- Harden and document OpenAI Codex subscription authentication, including `pnpm auth:login:openai-codex`, `FLUE_MODEL=openai-codex/<model>`, and `FLUE_OPENAI_CODEX_AUTH_FILE` override behavior.
 - Credential scoping and injection policy for tools, commands, MCP servers, and sandbox environments.
 - Multi-repository task support with one primary writable repo, auxiliary read-only context repos by default, and explicit multi-writable change sets when a task spans repos.
 - Prompt templates and snapshot tests for Slack/GitHub/Linear inputs.
@@ -49,7 +49,7 @@ This is a living backlog for product, integration, runtime, and operations work.
 
 ## Sandboxes
 
-- Local Docker provider.
+- Local Docker provider, distinct from the existing `local` host-subprocess development provider.
 - Kubernetes provider.
 - ECS/Fargate provider with bridge sidecar.
 - Provider conformance test suite.

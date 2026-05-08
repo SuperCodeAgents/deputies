@@ -6,7 +6,7 @@ Implemented so far:
 
 - Core TypeScript service scaffold.
 - Config parser, Hono transport layer, and health endpoint.
-- Product API auth modes: `none`, bearer token, and DB-backed session cookie login for the operator UI with static and GitHub App providers.
+- Product API auth modes: `none`, bearer token, and AppStore-backed session cookie login for the operator UI with static and GitHub App providers.
 - Stable JSON parse/body-limit errors for API routes.
 - Core session/message/event modules.
 - HTTP routes for creating/listing/updating/archiving/restoring sessions, enqueueing/editing/cancelling queued messages, cancelling active runs, listing artifacts, and replaying events.
@@ -31,9 +31,9 @@ Implemented so far:
 - Postgres integration test path.
 - App-level Postgres worker integration test.
 - Daytona sandbox idle cleanup with stop-before-destroy retention policy and advisory-lock reaper coordination.
-- Vite React operator UI with provider-aware session-cookie login, session list/search, queued message editing/cancelling, active-run cancellation, archive/restore, SSE streaming, and artifact/event views.
+- Vite React operator UI with provider-aware session-cookie login, session list/search, queued message editing/cancelling, active-run cancellation, archive/restore, SSE streaming, artifact panels, callback status, and per-run diagnostics derived from replayed/streamed events.
 - GitHub App runtime access for allowlisted repositories, including real GitHub token minting, Flue-runner repository refresh, and opt-in real GitHub + Daytona clone UAT coverage.
-- GitHub webhook ingress for issue, PR, PR review comment, and PR review events with signature verification, delivery dedupe, repository/user/org allowlists, trigger-phrase gating, session mapping, bounded context fetching, received reactions, and completion comments through the callback dispatcher.
+- GitHub webhook ingress for issue, PR, PR review comment, and PR review events with signature verification, delivery dedupe, repository/user/repository-owner allowlists, required trigger-phrase gating when webhooks are enabled, session mapping, bounded context fetching, received reactions, and completion comments through the callback dispatcher.
 - Agent runtime GitHub repository tooling for repository selection/preparation, authenticated `gh`, and authenticated guarded `git` operations inside prepared sandbox repositories.
 
 Still open from the early phases:
@@ -245,7 +245,7 @@ Acceptance criteria:
 - Bot messages are ignored.
 - Completion posts thread reply in emulated Slack.
 
-Status: mostly implemented. Inbound app mentions and thread follow-ups create/reuse sessions, Slack signatures and URL verification are supported, duplicate events are ignored, bot messages are ignored, allowlists enforce optional team/channel/user authorization, received/running/completed reactions are posted best-effort, and final deputy responses are delivered through the callback dispatcher. Tagged mentions fetch prior unprocessed thread replies as prompt context, omit already processed Slack timestamps, decode Slack text entities, and use readable channel/user names when Slack scopes allow it. Remaining work is optional status messages beyond reactions and direct-message support later.
+Status: mostly implemented. Inbound app mentions and mapped thread follow-ups create/reuse sessions, Slack signatures and URL verification are supported, duplicate events are ignored, bot messages are ignored, and allowlists enforce team/channel/user authorization; when `SLACK_SIGNING_SECRET` is set, startup requires at least one allowlist unless `UNSAFE_ALLOW_ALL_SLACK_IDS=true`. Received/running/completed reactions are posted best-effort, and final deputy responses are delivered through the callback dispatcher. App mentions can fetch prior unprocessed thread replies as prompt context, omit already processed Slack timestamps, decode Slack text entities, and use readable channel/user names when Slack scopes allow it. Remaining work is optional status messages beyond reactions and direct-message support later.
 
 ## Phase 8.5: Callback Observability
 
@@ -286,7 +286,7 @@ Acceptance criteria:
 - Tokens are not persisted in events, messages, artifacts, or logs.
 - GitHub API base URLs remain configurable for emulator-backed tests.
 
-Status: implemented for current runtime needs. Config parsing, GitHub App JWT signing, repository installation lookup, installation token minting, per-installation token caching, repository allowlist checks, and runner-safe repository access instructions exist with focused unit coverage. Messages can carry repository context, and the Flue runner clones or fetches the repo inside the sandbox with command-scoped env auth. The agent can list/set/prepare repositories and use guarded authenticated `gh` and `git` tools for the active prepared repo. Token values are not written to events/messages/artifacts or prompt text. Opt-in real GitHub App and real GitHub + Daytona UATs verify token minting and sandbox clone/fetch. Provider-owned push/branch/PR helper operations remain next.
+Status: implemented for current runtime needs. Config parsing, GitHub App JWT signing, repository installation lookup, repository-scoped installation token minting, per-repository token caching, repository allowlist checks, and runner-safe repository access instructions exist with focused unit coverage. Messages can carry repository context, and the Flue runner clones or fetches the repo inside the sandbox with command-scoped env auth. The agent can list/set/prepare repositories and use guarded authenticated `gh` and `git` tools for the active prepared repo. Token values are not written to events/messages/artifacts or prompt text. Opt-in real GitHub App and real GitHub + Daytona UATs verify token minting and sandbox clone/fetch. Provider-owned push/branch/PR helper operations remain next.
 
 ## Phase 9: GitHub Integration
 
@@ -315,7 +315,7 @@ Acceptance criteria:
 
 Dependency: Phase 8.6 should exist first so GitHub-created work can clone private repositories, push branches, and create PRs through GitHub App credentials.
 
-Status: implemented for webhook-created work and completion comments. `POST /webhooks/github/events` verifies signatures, dedupes deliveries, supports issue/PR/comment/review events, gates by repository/user/org allowlists and `GITHUB_TRIGGER_PHRASES`, maps issue/PR threads to sessions, fetches bounded prior context, ignores archived mapped sessions with a recovery comment, posts best-effort received reactions, and sends completion comments through the callback dispatcher. Remaining work: collaborator permission gating, label-based triggers, provider-owned branch/PR helpers, and fuller emulator-backed coverage once GitHub App JWT handling is fixed upstream.
+Status: implemented for webhook-created work and completion comments. `POST /webhooks/github/events` verifies signatures, dedupes deliveries, supports issue/PR/comment/review events, gates by repository/user/repository-owner allowlists and `GITHUB_TRIGGER_PHRASES`, maps issue/PR threads to sessions, fetches bounded prior context, records transcript-only cancelled entries for archived mapped sessions, supports `unarchive and proceed` recovery, posts best-effort received reactions, and sends completion comments through the callback dispatcher. Remaining work: collaborator permission gating, label-based triggers, provider-owned branch/PR helpers, and fuller emulator-backed coverage once GitHub App JWT handling is fixed upstream.
 
 Detailed implementation plan: see [GitHub Implementation Plan](./integrations.md#github-implementation-plan).
 

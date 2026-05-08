@@ -8,7 +8,7 @@ Initial providers may include:
 
 - `fake`: deterministic tests.
 - `local`: local development with host subprocess execution in a temp workspace. This is convenient for getting started but is not a security sandbox. Commands inherit a minimal environment and discover executables through an allowlisted `.deputies-bin` path; configure `LOCAL_SANDBOX_ALLOWED_COMMANDS` to replace the built-in development allowlist.
-- `local-docker`: local development and CI smoke tests.
+- `local-docker`: planned local development and CI smoke tests with container isolation.
 - `daytona`: hosted persistent development sandboxes.
 - `kubernetes`: pods/jobs inside a cluster.
 - `ecs`: Fargate tasks in AWS.
@@ -20,7 +20,7 @@ The worker coordinates product sandbox lifecycle through the provider interface.
 
 No module outside `sandbox` and provider-specific adapters should know whether a session is running on Docker, Daytona, Kubernetes, ECS, or a fake test provider.
 
-Flue already defines the runtime sandbox shape through `SandboxFactory` and `SessionEnv`. Our provider interface should not become a second agent filesystem/tool runtime. It should own lifecycle concerns that Flue intentionally does not own for our product: create, reconnect, health, destroy, snapshots, persisted provider IDs, and provider capabilities.
+Flue already defines the runtime sandbox shape through `SandboxFactory` and `SessionEnv`. Our provider interface should not become a second agent filesystem/tool runtime. It should own lifecycle concerns that Flue intentionally does not own for our product: create, reconnect, health, destroy, stop/start when supported, persisted provider IDs, and provider capabilities.
 
 ## Provider Interface
 
@@ -31,19 +31,14 @@ export interface SandboxProvider {
 
   create(input: CreateSandboxInput): Promise<SandboxHandle>;
   connect(input: ConnectSandboxInput): Promise<SandboxHandle>;
-  destroy(input: DestroySandboxInput): Promise<void>;
-
+  start?(input: SandboxRef): Promise<void>;
+  stop?(input: SandboxRef): Promise<void>;
+  destroy(input: SandboxRef): Promise<void>;
   health(input: SandboxRef): Promise<SandboxHealth>;
-
-  snapshot?(input: SnapshotSandboxInput): Promise<SandboxSnapshot>;
-  restore?(input: RestoreSandboxInput): Promise<SandboxHandle>;
-  stop?(input: StopSandboxInput): Promise<void>;
-  start?(input: StartSandboxInput): Promise<SandboxHandle>;
-  logs?(input: SandboxLogsInput): AsyncIterable<SandboxLogEvent>;
 }
 ```
 
-Only `create`, `connect`, `destroy`, and `health` are mandatory. Snapshot, restore, stop, start, and logs are optional capabilities.
+Only `create`, `connect`, `destroy`, and `health` are mandatory. The current implementation also supports optional `start` and `stop`. Snapshot, restore, and logs are represented only as capability concepts for future providers, not as current interface methods.
 
 ## Core Types
 
@@ -61,12 +56,6 @@ export type SandboxCapabilities = {
 
 export type CreateSandboxInput = {
   sessionId: string;
-  repo?: RepoRef;
-  baseBranch?: string;
-  workingBranch?: string;
-  image?: string;
-  env?: Record<string, string>;
-  resources?: SandboxResources;
   metadata?: Record<string, unknown>;
 };
 
@@ -86,9 +75,8 @@ export type SandboxHandle = SandboxRef & {
   workspacePath: string;
   metadata: Record<string, unknown>;
   capabilities: SandboxCapabilities;
-  exec(command: SandboxExecInput): Promise<SandboxExecResult>;
   fs?: SandboxFileSystem;
-  ports?: SandboxPorts;
+  exec(input: SandboxExecInput): Promise<SandboxExecResult>;
 };
 ```
 
@@ -131,7 +119,7 @@ export interface SandboxFileSystem {
   readFileBuffer(path: string): Promise<Uint8Array>;
   writeFile(path: string, contents: string | Uint8Array): Promise<void>;
   stat(path: string): Promise<SandboxFileStat>;
-  readdir(path: string): Promise<SandboxDirEntry[]>;
+  readdir(path: string): Promise<string[]>;
   exists(path: string): Promise<boolean>;
   mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
   rm(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<void>;
@@ -262,12 +250,12 @@ Required mapping:
 
 ```txt
 Flue exec -> SandboxHandle.exec
-Flue readFile -> SandboxHandle.fs.readFile or shell fallback
-Flue writeFile -> SandboxHandle.fs.writeFile or shell fallback
-Flue readdir/stat/exists/mkdir/rm -> SandboxHandle.fs or shell fallback
+Flue readFile -> SandboxHandle.fs.readFile
+Flue writeFile -> SandboxHandle.fs.writeFile
+Flue readdir/stat/exists/mkdir/rm -> SandboxHandle.fs
 ```
 
-If a provider lacks native filesystem APIs, the adapter may implement them with safe shell commands. That fallback must quote paths safely and reject unsupported path shapes.
+The current Flue adapter requires providers to expose `fs`; it does not implement shell-based filesystem fallbacks yet. Providers without native filesystem APIs need a bridge or adapter-level filesystem implementation before they can be used with `runner-flue`.
 
 ## Provider Examples
 
@@ -365,9 +353,9 @@ The provider adapter then talks to the bridge instead of provider-native exec AP
 
 This is especially useful for ECS, Kubernetes, and any provider with awkward remote exec semantics.
 
-## Conformance Tests
+## Planned Conformance Tests
 
-Every provider must pass the same conformance suite.
+Every provider should eventually pass the same conformance suite. The current code has focused unit coverage for fake, local, and Daytona behavior, but a reusable provider conformance suite is still planned.
 
 Required tests:
 
@@ -443,14 +431,7 @@ Rules:
 
 ## MVP Recommendation
 
-Implement providers in this order:
-
-1. `fake`, required for tests.
-2. `daytona`, the first hosted provider because it matches Flue's remote sandbox docs.
-3. `local-docker`, useful for local and CI validation.
-4. Kubernetes or ECS depending on the first self-hosted deployment target.
-
-This order proves the interface with both deterministic tests and a hosted persistent sandbox before committing to a self-hosted infrastructure platform.
+Current implemented providers are `fake`, `local`, and `daytona`. Future provider work should add `local-docker`, then Kubernetes or ECS depending on deployment needs.
 
 ## Relationship To Flue's Daytona Example
 

@@ -23,9 +23,11 @@ The UI supports all product API auth modes exposed by `/health`:
 
 - `none`: the UI calls the API without credentials.
 - `bearer`: the user enters the API bearer token in the browser. The token is stored in `localStorage` and sent as `Authorization: Bearer <token>`.
-- `session`: the user signs in through the configured provider. The API sets an opaque `dev_deputies_session` HTTP-only cookie backed by the database, and the UI sends requests with `credentials: include`.
+- `session`: the user signs in through the configured provider. The API sets an opaque `dev_deputies_session` HTTP-only cookie backed by the configured `AppStore` (`auth_sessions` in Postgres for durable deployments), and the UI sends requests with `credentials: include`.
 
 `API_AUTH_MODE` is required. Use `API_AUTH_MODE=none` only for intentional local or test no-auth runs; production-like deployments should use `bearer` or `session`.
+
+Session-cookie auth is an API access gate only. Product sessions remain multiplayer/shared by default: authenticated users can list and open the same global session set, and sessions are not currently owned by or filtered to the authenticated user.
 
 Local static session-auth example:
 
@@ -74,9 +76,9 @@ The SSE client uses `fetch()` streaming instead of native `EventSource` because 
 - Edit or cancel pending queued messages.
 - Request cancellation of an active run.
 - Archive and restore sessions. Archived sessions are read-only until restored.
-- Replay and stream session events.
+- Replay and stream session events internally, rendering assistant text in the transcript and non-text run/message events as collapsible diagnostics.
 - List session artifacts.
-- Show callback delivery status and manually replay failed callbacks.
+- Show HTTP, Slack, and GitHub completion callback delivery status in the context panel and manually replay failed callbacks.
 
 ## Deployment
 
@@ -86,4 +88,4 @@ The web app builds to static assets:
 pnpm web:build
 ```
 
-Deploy `web/dist` to a CDN/static host and set `VITE_API_BASE_URL` to the public API origin at build time. Do not bake bearer tokens, static passwords, or session secrets into the web build.
+Deploy `web/dist` to a CDN/static host and set `VITE_API_BASE_URL` to the public API origin at build time. Also set the API service's `WEB_BASE_URL` to the deployed web UI URL so the API allows that origin for credentialed CORS requests and uses it for integration session links. Do not bake bearer tokens, static passwords, or session secrets into the web build.

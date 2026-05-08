@@ -59,7 +59,7 @@ Schemas should protect API and event stability.
 Contract targets:
 
 - Public API responses.
-- `IntegrationEnvelope`.
+- Source-specific normalized integration inputs and shared message context shape.
 - `NormalizedEvent` payloads.
 - Generic webhook source config.
 - Runner input/output.
@@ -77,10 +77,11 @@ Current local policy:
 - `pnpm api:test:integration` runs Postgres-backed integration tests and requires `TEST_DATABASE_URL`.
 - `pnpm api:test:load` runs a configurable Postgres-backed control-plane load profile and requires `TEST_DATABASE_URL`.
 - `pnpm api:test:uat` runs built-artifact UAT tests from `api/test/uat` and requires `TEST_DATABASE_URL` plus a prior `pnpm api:build`.
-- `pnpm web:test -- --run` runs the Vite/jsdom operator UI regression tests.
-- `pnpm check` runs API typecheck/tests and web typecheck/tests.
-- Real local Flue UAT is opt-in: set `RUN_REAL_LOCAL_FLUE_UAT=true`, `FLUE_MODEL`, and the model provider credentials required by that model before running `pnpm --dir api exec vitest run --config vitest.uat.config.ts test/uat/real-local-flue.test.ts`.
-- Real Daytona/Flue UAT is opt-in: set `RUN_REAL_DAYTONA_FLUE_UAT=true`, `DAYTONA_API_KEY`, `FLUE_MODEL`, and the model provider credentials required by that model before running `pnpm api:test:uat`.
+- `pnpm web:test` runs the Vite/jsdom operator UI regression tests.
+- `pnpm web:e2e` runs Playwright browser tests such as responsive context-panel coverage.
+- `pnpm check` runs API typecheck/tests and web typecheck/jsdom tests; it does not run Playwright E2E tests.
+- Real local Flue UAT is opt-in: set `RUN_REAL_LOCAL_FLUE_UAT=true`, `API_AUTH_MODE=none`, `FLUE_MODEL`, and the model provider credentials required by that model before running `pnpm --dir api exec vitest run --config vitest.uat.config.ts test/uat/real-local-flue.test.ts`.
+- Real Daytona/Flue UAT is opt-in: build first and set `RUN_REAL_DAYTONA_FLUE_UAT=true`, `API_AUTH_MODE=none`, `TEST_DATABASE_URL`, `DAYTONA_API_KEY`, `FLUE_MODEL`, and the model provider credentials required by that model before running `pnpm api:test:uat`.
 - `docker compose up -d postgres` starts local Postgres and creates both `flue` and `flue_test`.
 - Integration tests apply migrations to `flue_test` and truncate app tables between tests.
 - Do not run `api:test:integration` and `api:test:uat` concurrently against the same `TEST_DATABASE_URL`; both suites reset shared tables.
@@ -241,8 +242,9 @@ Acceptance tests:
 - Invalid auth returns stable JSON error.
 - Duplicate delivery does not create duplicate messages.
 - Event stream emits user-visible events.
-- GitHub webhook creates session and callback comment in emulator.
-- Slack webhook creates session and callback reply in emulator.
+- Generic webhook UAT validates built-server webhook ingestion and HTTP completion callbacks.
+- GitHub OAuth emulate UAT validates session-cookie login through the emulated GitHub OAuth flow.
+- Slack/GitHub webhook callback assertions live in gated/skipped emulator-backed integration tests until emulator reliability is sufficient for regular UAT/CI.
 
 Current GitHub emulator caveat: published `emulate@0.5.0` rejects valid GitHub App JWTs during installation token minting. Keep tests that require installation tokens skipped until a fixed emulate release is available, and keep real GitHub App smoke tests opt-in.
 

@@ -138,23 +138,25 @@ Owns external source normalization and callbacks.
 
 Concepts:
 
-- `IntegrationEnvelope`
 - `ExternalThread`
 - `IntegrationDelivery`
-- `MessageCallback`
+- source-specific normalized webhook inputs
+- message `context.callback` targets
+- `CallbackDelivery`
 
 Invariants:
 
 - Integrations never run agents directly.
 - Inbound deliveries are authenticated and deduped.
-- External content is wrapped as untrusted prompt context.
+- External content is rendered as clearly labelled source-specific prompt context.
 - External thread IDs deterministically map to sessions.
 
 Modules:
 
 ```txt
 api/src/integrations
-api/src/prompts
+api/src/integrations/prompt-bounds.ts
+api/src/integrations/slack/prompts.ts
 ```
 
 ### Persistence Context
@@ -226,10 +228,10 @@ External systems must be translated at the boundary.
 
 | External System | Internal Translation |
 |---|---|
-| Slack events | `IntegrationEnvelope` + external thread mapping |
-| GitHub webhooks | `IntegrationEnvelope` + prompt context + callback target |
-| Linear webhooks | `IntegrationEnvelope` + repo resolution + callback target |
-| Generic webhooks | configured mapping/filter/template -> `IntegrationEnvelope` |
+| Slack events | source-specific normalized event + external thread mapping + callback target |
+| GitHub webhooks | source-specific normalized event + prompt context + callback target |
+| Linear webhooks | planned normalized event + repo resolution + callback target |
+| Generic webhooks | required simple payload shape -> session/message/context/callback target |
 | Flue | `Runner` interface + Flue session store |
 | Sandbox providers | `SandboxProvider` interface + capabilities |
 
@@ -248,6 +250,8 @@ api/src/store/memory.ts         # deterministic test/local adapter
 api/src/store/postgres.ts       # durable product state adapter
 api/src/db/migrations           # SQL migrations
 api/src/runner/types.ts         # runner port
+api/src/worker/service.ts       # durable work coordinator
+api/src/runner-flue             # Flue runner adapter
 api/src/sandbox/types.ts        # sandbox provider port
 ```
 

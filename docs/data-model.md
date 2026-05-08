@@ -29,9 +29,13 @@ artifacts
 flue_sessions
 external_threads
 integration_deliveries
-message_callbacks
-repo_credentials
+callback_deliveries
 webhook_sources
+session_sequence_counters
+app_migrations
+
+Planned:
+repo_credentials
 ```
 
 ## Implementation Stages
@@ -126,7 +130,6 @@ Statuses:
 ```txt
 created
 active
-processing
 idle
 completed
 failed
@@ -269,34 +272,42 @@ payload jsonb not null default '{}'
 created_at timestamptz not null
 ```
 
-Important event types:
+Important current event types:
 
 ```txt
 session_created
+session_archived
+session_unarchived
+session_updated
+session_queue_paused
+session_queue_resumed
 message_created
+message_updated
+message_cancelled
 message_started
 run_started
-message_batch_started
 sandbox_starting
 sandbox_ready
 sandbox_stopped
 sandbox_stop_failed
 sandbox_destroyed
 sandbox_destroy_failed
+repository_ready
 agent_text_delta
+agent_response_final
 tool_started
 tool_finished
 artifact_created
-run_cancelling
-run_cancelled
 run_completed
 run_failed
+run_cancel_requested
+run_cancelled
 message_completed
 message_failed
-message_cancelled
 callback_sent
 callback_retry_scheduled
 callback_failed
+callback_replay_requested
 ```
 
 Rules:
@@ -335,19 +346,17 @@ last_health_check_at timestamptz
 destroyed_at timestamptz
 ```
 
-Statuses:
+Current implemented statuses:
 
 ```txt
-pending
-creating
 ready
-running
-unhealthy
-snapshotting
 stopped
+unhealthy
 destroyed
 failed
 ```
+
+Longer-term provider lifecycle states such as `pending`, `creating`, `running`, and `snapshotting` may be introduced later if needed.
 
 Rules:
 
@@ -358,7 +367,7 @@ Rules:
 Current implementation:
 
 - `007_sandboxes.sql` creates the product sandbox lifecycle table.
-- Active sandbox lookup uses the latest non-destroyed `ready` or `unhealthy` row for a `(session_id, provider)` pair.
+- Active sandbox lookup uses the latest non-destroyed `ready`, `stopped`, or `unhealthy` row for a `(session_id, provider)` pair.
 - The worker health-checks and reconnects a ready active sandbox before running a follow-up message.
 - Stopped sandboxes remain active candidates and are restarted before reconnect when the provider supports start/stop.
 - If health or reconnect fails, the row is marked `unhealthy` and a replacement sandbox is created.
@@ -408,7 +417,7 @@ Current implementation:
 - `008_artifacts_callbacks.sql` creates `artifacts` and `callback_deliveries`.
 - Runner-returned artifacts are persisted after successful runs and emitted as `artifact_created` events.
 - Session artifacts are readable through `GET /sessions/:sessionId/artifacts`.
-- Generic webhook HTTP callbacks and Slack completion replies are recorded in `callback_deliveries` with `pending`, `sending`, `sent`, or `failed` status.
+- Generic webhook HTTP callbacks, Slack completion replies, and GitHub completion comments are recorded in `callback_deliveries` with `pending`, `sending`, `sent`, or `failed` status.
 
 ## Flue Sessions
 
@@ -418,9 +427,6 @@ Suggested columns:
 
 ```txt
 id text primary key
-agent_id text not null
-session_id text not null
-app_session_id uuid references sessions(id)
 data jsonb not null
 version int not null default 1
 created_at timestamptz not null
@@ -433,7 +439,7 @@ Rules:
 - Use a custom Postgres-backed Flue session store in production and CI.
 - Do not rely on Flue's Node in-memory default outside local experiments.
 - Product state remains in `sessions`, `messages`, `runs`, `events`, `artifacts`, and `sandboxes`.
-- The current `flue_sessions` table is implemented by `006_flue_sessions.sql` and is used by the Postgres-backed Flue session store.
+- The current `flue_sessions` table is implemented by `006_flue_sessions.sql` and stores only Flue's opaque session store key as `id`; it does not persist separate `agent_id`, `session_id`, or `app_session_id` metadata columns.
 
 See [Flue Persistence](./flue-persistence.md) for details.
 
@@ -453,14 +459,13 @@ created_at timestamptz not null
 updated_at timestamptz not null
 ```
 
-Examples:
+Examples of `(source, external_id)` pairs:
 
 ```txt
-slack:T123:C456:thread_ts
-github:owner/repo:issue:123
-github:owner/repo:pr:456
-linear:issue-id
-webhook:source-key:external-thread-id
+source=slack, external_id=T123:C456:1710000000.000100
+source=github, external_id=owner/repo#123
+source=<generic webhook source key>, external_id=<threadId>
+source=linear, external_id=<issue-id>  # planned
 ```
 
 Index:
@@ -482,6 +487,7 @@ dedupe_key text not null
 status text not null
 received_at timestamptz not null
 processed_at timestamptz
+failed_at timestamptz
 error text
 metadata jsonb not null default '{}'
 ```
@@ -595,7 +601,7 @@ begin
 commit
 ```
 
-The current scaffold has separate `AppStore` calls for sequence allocation and insert. The Postgres implementation keeps sequence allocation safe through `session_sequence_counters`; the worker phase should move multi-step message/run transitions into explicit transactions where atomic state transitions matter.
+The Postgres implementation keeps sequence allocation safe through `session_sequence_counters` and implements worker claim/finalize/cancellation transitions with transactional store methods where atomic state changes matter.
 
 Claim message:
 
@@ -625,9 +631,9 @@ Cancel active run:
 
 ```txt
 begin
-  find active starting/running run for session
+  find active starting/running/cancelling run for session
   mark run and processing messages cancelling
-  insert run_cancelling/message_cancelling events
+  insert run_cancel_requested event
 commit
 
 worker observes cancellation

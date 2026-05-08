@@ -9,7 +9,7 @@ They must never run agents directly.
 Allowed:
 
 ```ts
-await enqueueIntegrationMessage(envelope);
+await messages.enqueue({ sessionId, source, prompt, context });
 ```
 
 Forbidden:
@@ -18,33 +18,9 @@ Forbidden:
 await runner.run(...);
 ```
 
-## Common Envelope
+## Common Shape
 
-Every integration should produce the same internal shape.
-
-```ts
-type IntegrationEnvelope = {
-  source: 'generic-webhook' | 'github' | 'slack' | 'linear';
-  externalThreadId?: string;
-  dedupeKey?: string;
-  actor: {
-    externalId: string;
-    name?: string;
-    email?: string;
-  };
-  repo?: {
-    owner: string;
-    name: string;
-    defaultBranch?: string;
-  };
-  prompt: string;
-  context: Record<string, unknown>;
-  callback?: {
-    type: 'http' | 'github' | 'slack' | 'linear';
-    target: Record<string, string>;
-  };
-};
-```
+Integrations currently normalize into source-specific internal event shapes, then enqueue product messages with the same durable fields: `source`, `prompt`, `context`, optional repository context, optional `context.callback`, delivery metadata, and external-thread mapping. A single cross-source `IntegrationEnvelope` type is still a future extraction if another integration creates enough repetition.
 
 ## Shared Flow
 
@@ -52,13 +28,14 @@ type IntegrationEnvelope = {
 external webhook
   -> verify signature/auth
   -> dedupe delivery
-  -> normalize payload to IntegrationEnvelope
+  -> normalize payload to a source-specific internal shape
   -> resolve external thread mapping
   -> create or find session
   -> append message
   -> return 202 Accepted
   -> worker executes message later
-  -> callback dispatcher posts progress/completion
+  -> received/progress notifiers add lightweight source-specific signals
+  -> callback dispatcher posts final completion callbacks
 ```
 
 ## Cross-Integration Learnings
@@ -88,9 +65,9 @@ Avoid a large abstract integration framework for now. Prefer small shared utilit
 
 Generic webhook auth is independent of product API auth. Product session routes can use explicit `API_AUTH_MODE=none|bearer|session`, but `POST /webhooks/generic/:sourceKey` always uses the bearer token configured for that webhook source in the database.
 
-External Slack and GitHub completion replies append source-specific operator hints at send time. The first completion reply for a mapped external thread also includes a session link when `WEB_BASE_URL` is configured; Slack renders this as Block Kit context text, and GitHub renders it as a Markdown `View session` link. These footers are integration output only; they are not added to prompts or assistant transcript text.
+External Slack and GitHub completion replies append source-specific operator hints at send time. The first accepted message for a mapped external thread includes a session link in the callback target when `WEB_BASE_URL` is configured; callback senders render it as `Link to session: <url>`. Slack includes it in reply text and a Block Kit section, and GitHub includes it in the completion comment footer. These footers are integration output only; they are not added to prompts or assistant transcript text.
 
-The generic webhook is the first integration to implement.
+The generic webhook was the first integration implemented and remains the simplest DB-configured inbound webhook path.
 
 Route:
 
@@ -122,7 +99,7 @@ Current callback support:
 - On message completion, the worker posts a JSON payload to that URL.
 - Callback attempts are persisted in `callback_deliveries`. The dispatcher claims due callbacks, delivers them through target-specific sender plugins, records `callback_sent` on success, schedules retry on transient failure, and records `callback_failed` after terminal failure.
 
-Example config:
+Current stored source shape is `key`, `name`, `enabled`, `bearer_token`, and optional `prompt_prefix`. Mapping, filters, default templates, and token hashes remain future extensions. Future rich source configuration could look like:
 
 ```json
 {
@@ -152,11 +129,10 @@ Example config:
 Session resolution:
 
 ```txt
-if externalThreadId exists:
-  sourceKey + externalThreadId -> existing session or create new
-else:
-  create new session per accepted delivery
+sourceKey + threadId -> existing session or create new
 ```
+
+Generic webhook payloads currently require non-empty `threadId`, `dedupeKey`, and `prompt`. Requests without `threadId` are rejected.
 
 ## GitHub Integration
 
@@ -170,17 +146,18 @@ Credential handling:
 
 - `GITHUB_APP_PRIVATE_KEY` and `GITHUB_APP_ID` stay in service environment/secrets and are used only server-side to sign GitHub App JWTs.
 - `GITHUB_APP_CLIENT_ID` and `GITHUB_APP_CLIENT_SECRET` are the same GitHub App's user-authorization credentials. They are used only for product UI login when `API_AUTH_MODE=session` and `AUTH_PROVIDER=github`.
-- Installation tokens are minted in memory, cached per installation until near expiry, and are not persisted in messages, events, artifacts, callbacks, or prompts.
+- Installation tokens are minted in memory, scoped to the requested repository, cached per repository until near expiry, and are not persisted in messages, events, artifacts, callbacks, or prompts.
 - Git clone/fetch auth is passed to Flue `session.shell` as command-scoped env: `GITHUB_AUTH_HEADER=Authorization: Basic base64(x-access-token:<installation-token>)`.
 - Shell commands reference only `$GITHUB_AUTH_HEADER`; token values are not embedded in command strings. Flue shell history records env variable names, not values.
 - The agent `repository` tool is always available when GitHub access is configured. `status` reports active/prepared repo state, `list` reports configured allowlist entries, `set` validates and persists session repo context, and `prepare` clones/fetches inside the sandbox.
 - Repository setup configures repo-local git identity as `Deputies <deputies@users.noreply.github.com>` so agents do not need to mutate global sandbox git config.
-- The agent `gh` tool runs in trusted worker code with command-scoped `GH_TOKEN`, `GH_REPO`, a temporary `GH_CONFIG_DIR`, disabled prompts, token redaction, and blocked auth/config/extension/clone escape hatches. It resolves the active repo at call time and blocks GitHub Git Database API routes so sandbox-local commits are published through git, not remote object surgery.
+- The agent `gh` tool runs in trusted worker code with `GH_TOKEN` for `github.com` or `GH_ENTERPRISE_TOKEN` plus `GH_HOST` for GitHub Enterprise hosts, `GH_REPO`, a temporary `GH_CONFIG_DIR`, disabled prompts, token redaction, and blocked auth/config/extension/clone escape hatches. It resolves the active repo at call time, blocks direct issue/PR comment posting so callbacks own final replies, and blocks GitHub Git Database API routes so sandbox-local commits are published through git, not remote object surgery.
 - The agent `git` tool runs the git process inside the prepared remote sandbox repository through Flue agent-level `shell` with command-scoped `GITHUB_AUTH_HEADER`. Agents should use it for authenticated push/fetch/pull operations, not for GitHub issue/comment/PR API work. Risky push forms such as force, mirror, delete, and force refspecs are blocked.
 - `repository_ready` events contain repository identity, workspace path, and expiry metadata only.
-- GitHub webhook allowlists fail closed when `GITHUB_WEBHOOK_SECRET` is set. Configure `GITHUB_ALLOWED_USERS` or `GITHUB_ALLOWED_ORGANIZATIONS`, or explicitly set `UNSAFE_ALLOW_ALL_GITHUB_USERS_AND_ORGS=true` for unrestricted GitHub webhook access.
-- `GITHUB_ALLOWED_USERS` and `GITHUB_ALLOWED_ORGANIZATIONS` gate inbound webhooks. Empty means unrestricted for that dimension only after at least one webhook allowlist exists, or after unsafe allow-all is enabled. Configured lists are matched case-insensitively. Non-matching deliveries are recorded as failed integration deliveries and no session/message is created.
-- `GITHUB_TRIGGER_PHRASES` replaces trigger handles. Issue/PR/comment/review text must include one configured activation phrase, such as `/deputies`, `deputies:`, `@deputies`, or an org team mention like `@acme/deputies`. Bare values like `deputies` match `@deputies`, `/deputies`, and `deputies:`.
+- GitHub webhooks fail closed when `GITHUB_WEBHOOK_SECRET` is set. Configure `GITHUB_ALLOWED_USERS` or `GITHUB_ALLOWED_ORGANIZATIONS`, or explicitly set `UNSAFE_ALLOW_ALL_GITHUB_USERS_AND_ORGS=true`, and configure at least one `GITHUB_TRIGGER_PHRASES` value.
+- `GITHUB_ALLOWED_USERS` gates the webhook sender login. `GITHUB_ALLOWED_ORGANIZATIONS` gates the repository owner. Empty means unrestricted for that dimension only after at least one webhook allowlist exists, or after unsafe allow-all is enabled. Configured lists are matched case-insensitively. Non-matching deliveries are recorded as failed integration deliveries and no session/message is created.
+- `GITHUB_ALLOWED_REPOSITORIES` is optional but, when configured, additionally gates inbound GitHub webhooks and runtime repository access. Entries are matched case-insensitively and support exact `owner/repo` entries plus `owner/*` owner-wide patterns.
+- `GITHUB_TRIGGER_PHRASES` replaces trigger handles. Issue/PR/comment/review text must include one configured activation phrase, such as `/deputies`, `deputies:`, `@deputies`, or an org team mention like `@acme/deputies`. Bare values like `deputies` match `@deputies`, `/deputies`, `deputies:`, and standalone boundary-delimited `deputies`.
 
 The intended runtime model is snapshot-friendly: Daytona images/snapshots may pre-bake common repos and build artifacts, but every Flue run still refreshes or repairs the requested repository as its first sandbox shell step so reused/stale sandboxes get current code and fresh credentials.
 
@@ -237,14 +214,16 @@ Inbound responsibilities:
 - Resolve repo, issue, PR, comment, and actor.
 - Fetch issue/PR comments and include only comments not already represented in prior Deputies messages for that GitHub thread. The current triggering comment is excluded because it is rendered separately.
 - Render GitHub context with Slack-style section labels and separators; rely on webhook auth, repo/user/org allowlists, and trigger-phrase gating for authorization.
-- If a webhook maps to an archived session, acknowledge it without creating a message and, when GitHub comments are configured, post a recovery comment telling the user to restore the session or start a new thread.
+- If a webhook maps to an archived session, record transcript-only cancelled entries and, when GitHub comments are configured, post an archived-session notice. If the user replies with `unarchive and proceed`, unarchive the session and queue recovery work when archived transcript messages exist.
 
-External thread IDs:
+External thread mapping:
 
 ```txt
-github:owner/repo:issue:123
-github:owner/repo:pr:456
+source = github
+external_id = owner/repo#123
 ```
+
+The issue/PR distinction is stored in external-thread/message metadata as `itemType`.
 
 Reaction/callback responsibilities:
 
@@ -257,10 +236,11 @@ Reaction/callback responsibilities:
 
 Archived-session behavior:
 
-- Slack and GitHub mapped follow-ups do not reactivate archived sessions.
-- The inbound webhook is acknowledged and ignored for queueing.
-- If the source callback client is configured, the integration posts a short recovery notice in the external thread.
-- Restoring the product session allows later mapped follow-ups to enqueue normally.
+- Slack and GitHub mapped follow-ups do not queue normal work while the session is archived.
+- The inbound webhook is acknowledged; transcript-only cancelled entries are recorded.
+- If the source callback client is configured, the integration posts a short archived-session notice in the external thread.
+- Replying with `unarchive and proceed` restores the product session. If archived transcript entries exist, the integration queues recovery work for them; if the recovery phrase is the only content, it records a recovery acknowledgement and does not start a run.
+- Restored sessions accept later mapped follow-ups normally.
 
 Testing should use `vercel-labs/emulate` GitHub service where possible:
 
@@ -273,8 +253,8 @@ Testing should use `vercel-labs/emulate` GitHub service where possible:
 Current emulator caveat: published `emulate@0.5.0` rejects valid GitHub App JWTs during installation token minting because of upstream issue [vercel-labs/emulate#96](https://github.com/vercel-labs/emulate/issues/96). GitHub emulator tests that require App installation tokens are hard-skipped until a fixed emulate release is available. Real-provider smoke coverage is opt-in:
 
 ```sh
-RUN_REAL_GITHUB_APP_UAT=true pnpm --dir api exec vitest run --config vitest.uat.config.ts test/uat/real-github-app.test.ts
-RUN_REAL_GITHUB_DAYTONA_UAT=true pnpm --dir api exec vitest run --config vitest.uat.config.ts test/uat/real-github-app.test.ts
+RUN_REAL_GITHUB_APP_UAT=true API_AUTH_MODE=none GITHUB_APP_ID=... GITHUB_APP_PRIVATE_KEY=... GITHUB_ALLOWED_REPOSITORIES=owner/repo pnpm --dir api exec vitest run --config vitest.uat.config.ts test/uat/real-github-app.test.ts
+RUN_REAL_GITHUB_DAYTONA_UAT=true API_AUTH_MODE=none GITHUB_APP_ID=... GITHUB_APP_PRIVATE_KEY=... GITHUB_ALLOWED_REPOSITORIES=owner/repo DAYTONA_API_KEY=... pnpm --dir api exec vitest run --config vitest.uat.config.ts test/uat/real-github-app.test.ts
 ```
 
 The first UAT mints a real installation token and performs a non-mutating local `git ls-remote`. The second creates a real Daytona sandbox and verifies the Flue-runner startup path clones/fetches the repository inside the sandbox.
@@ -309,7 +289,7 @@ Normalize raw GitHub payloads into a small internal event shape before session/m
 - Add stable `triggerKey` and `concurrencyKey` fields, e.g. `issue_comment:<commentId>`, `pr:<number>`, and `issue:<number>`.
 - Resolve repository as `{ provider: 'github', owner, repo }` and attach it to message context so the Flue runner startup step can clone/fetch it inside the sandbox before the agent prompt.
 - Ignore bot/self comments to avoid loops.
-- Enforce `GITHUB_ALLOWED_REPOSITORIES` before any API fetch or session creation.
+- Enforce `GITHUB_ALLOWED_REPOSITORIES` after signature verification, event parsing, and delivery receipt, but before any GitHub API context fetch or session/message creation.
 - Add caller gating after repo allowlist: explicit allowed GitHub users/orgs exist; collaborator permission checks requiring `write`, `maintain`, or `admin` remain open.
 - Add best-effort `eyes` reaction for accepted comments/review comments after gating succeeds.
 
@@ -338,8 +318,7 @@ Acceptance criteria:
 
 Use deterministic external thread IDs so GitHub follow-ups reuse the correct session.
 
-- Map issues to `github:<owner>/<repo>:issue:<issueNumber>`.
-- Map PRs to `github:<owner>/<repo>:pr:<prNumber>`.
+- Map issues and PRs to `source=github`, `external_id=<owner>/<repo>#<number>`.
 - For PR review comments, use the PR external thread and include review-comment metadata in the message context.
 - Fetch enough context for the first accepted event: issue/PR title, body, author, relevant comments, review comments, and diff hunk when available.
 - For later mentions, include only unprocessed comments since the last accepted GitHub mention when feasible.
@@ -437,34 +416,38 @@ See [Slack Testing](./slack-testing.md) for real Slack, tunnel, and emulate work
 Supported triggers:
 
 - App mentions.
-- Thread follow-ups.
-- Direct messages later.
+- Message follow-ups in already mapped Slack threads.
+
+Planned:
+
+- Direct messages.
 
 Inbound responsibilities:
 
 - Verify Slack signing secret.
-- Enforce optional team/channel/user allowlists.
+- Enforce team/channel/user allowlists when configured; startup requires at least one allowlist when Slack signing is enabled unless unsafe allow-all is explicit.
 - Handle Slack URL verification challenge.
 - Dedupe by Slack event ID.
 - Ignore bot/self events.
 - Resolve Slack thread to session.
 - Strip the bot mention from app mention prompts.
-- Include prior unprocessed Slack thread messages as background context when the bot is tagged later in a thread.
+- Include prior unprocessed Slack thread messages as background context for `app_mention` events when token scopes allow it.
 - Resolve readable Slack channel and user names for prompts when Slack API scopes allow it.
 - Resolve repo from explicit syntax, defaults, or classifier later.
 
 External thread ID:
 
 ```txt
-slack:team_id:channel_id:thread_ts
+source = slack
+external_id = team_id:channel_id:thread_ts
 ```
 
 Callback responsibilities:
 
-- Reply in thread with session start.
-- Reply with final result or PR URL.
-- Reply with failures that require human attention.
-- Keep progress messages sparse by default.
+- Add received/running/completed reactions when configured.
+- Reply in thread with the final result through the callback dispatcher.
+- Reply with archived-session recovery notices when needed.
+- Keep progress messages sparse by default; start/status messages beyond reactions remain future work.
 
 Testing should use `vercel-labs/emulate` Slack service:
 
@@ -479,12 +462,12 @@ Current implementation:
 - `url_verification` returns the Slack challenge after signature verification.
 - Optional `SLACK_ALLOWED_TEAM_IDS`, `SLACK_ALLOWED_CHANNEL_IDS`, and `SLACK_ALLOWED_USER_IDS` comma-separated allowlists reject unauthorized events before session/message creation. Slack is fail-closed when `SLACK_SIGNING_SECRET` is set: at least one allowlist is required unless `UNSAFE_ALLOW_ALL_SLACK_IDS=true` is explicitly configured.
 - `app_mention` creates or reuses a session keyed by `team_id:channel:thread_ts`.
-- `message` events are accepted only as thread follow-ups, not as new top-level sessions.
-- Thread follow-ups mapped to archived sessions are acknowledged and ignored so archived sessions remain read-only. When Slack replies are configured, the bot posts an in-thread notice explaining that the session must be restored first.
+- `message` events are accepted only as follow-ups in already mapped threads, not as new top-level sessions.
+- Thread follow-ups mapped to archived sessions are acknowledged and recorded as transcript-only cancelled entries. When Slack replies are configured, the bot posts an in-thread notice explaining that the session must be restored first. Replying with `unarchive and proceed` restores the session and queues recovery work for archived transcript messages, or only records a recovery acknowledgement if no work is pending.
 - Duplicate `event_id` values are ignored through `integration_deliveries`.
 - Bot messages are ignored to prevent loops.
 - Accepted Slack messages get a best-effort `:eyes:` reaction when `SLACK_BOT_TOKEN` has `reactions:write`.
-- Tagged Slack thread messages can include fetched prior thread replies as prior-message context. Context messages whose Slack `ts` already exists on prior product messages are omitted to avoid replaying already processed requests.
+- `app_mention` events can include fetched prior thread replies as prior-message context. Context messages whose Slack `ts` already exists on prior product messages are omitted to avoid replaying already processed requests. Plain `message` follow-ups in already mapped threads are accepted without fetching additional prior thread context.
 - Prompts use Slack channel/user names when `SLACK_BOT_TOKEN` has `channels:read` or `groups:read` for channel lookup and `users:read` for user lookup; raw Slack IDs remain in message context only.
 - Running Slack-originated work gets a best-effort `:hourglass_flowing_sand:` reaction through the Slack progress notifier plugin.
 - Completed Slack replies get a best-effort `:white_check_mark:` reaction through the Slack callback sender.
@@ -493,8 +476,8 @@ Current implementation:
 Local HTTPS emulation:
 
 ```sh
-portless proxy start
-pnpm dlx emulate start --service slack --portless
+pnpm api:portless:start
+pnpm api:emulate:slack
 ```
 
 Then point Slack client config at:
@@ -527,7 +510,8 @@ Inbound responsibilities:
 External thread ID:
 
 ```txt
-linear:issue_id
+source = linear
+external_id = issue_id
 ```
 
 Callback responsibilities:
@@ -564,7 +548,7 @@ Current implementation:
 - The worker dispatches due callbacks when no session message is available to claim.
 - Callback sender plugins keep concrete integration clients out of callback core. Slack provides `SlackCompletionCallbackSender` from `api/src/integrations/slack`.
 - Retry uses exponential backoff with jitter and terminal failure after `max_attempts`.
-- Session-scoped API/UI controls show callback delivery status and can requeue failed deliveries for manual replay without re-running the agent task.
+- Session-scoped API/UI controls show HTTP, Slack, and GitHub callback delivery status and can requeue failed deliveries for manual replay without re-running the agent task.
 
 ## Auth Model
 
@@ -572,7 +556,7 @@ Separate inbound verification from outbound API credentials.
 
 | Integration | Inbound | Outbound |
 |---|---|---|
-| Generic webhook | Bearer/HMAC/basic | Optional HTTP callback auth |
+| Generic webhook | Bearer now; HMAC/basic future | Optional HTTP callback URL |
 | GitHub | Webhook secret | GitHub App token, optional user OAuth |
 | Slack | Signing secret | Slack bot token |
 | Linear | Webhook secret | Linear API token |
@@ -586,7 +570,7 @@ Credential handling rules:
 
 ## Prompt Construction
 
-Integration prompt builders should produce structured, source-specific context while sharing common safety language.
+Integration prompt builders should produce structured, source-specific context while keeping behavior rules out of chat-visible source prompts.
 
 Required sections:
 
@@ -595,6 +579,6 @@ Required sections:
 - External object metadata.
 - User request.
 - Relevant context.
-- Explicit untrusted-content boundary for external comments/bodies.
+- Clear labels and `---` separators for external comments/bodies.
 
-Prompt templates live in `api/src/prompts`, not inside route handlers.
+Prompt builders live in source-specific integration modules such as `api/src/integrations/slack/prompts.ts` and `api/src/integrations/github/webhook-service.ts`, with shared prompt-bound helpers in `api/src/integrations/prompt-bounds.ts`. A top-level `api/src/prompts` module remains a future extraction if prompt reuse grows.

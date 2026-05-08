@@ -42,7 +42,7 @@ Open-Inspect-style durable sessions/events/artifacts
 + provider-neutral sandbox interface
 ```
 
-This means product state lives in our Postgres-backed control plane, Flue is isolated behind `runner-flue`, external systems normalize into a common message envelope, and sandbox providers plug in through a conformance-tested interface. Cloud/provider-specific capabilities such as snapshots, stop/start, WebSocket bridges, or object storage are optional optimizations rather than correctness requirements.
+This means product state lives in our Postgres-backed control plane, Flue is isolated behind `runner-flue`, external systems normalize into source-specific message context, and sandbox providers plug in through a stable interface; a shared provider conformance test suite is planned. Cloud/provider-specific capabilities such as snapshots, stop/start, WebSocket bridges, or object storage are optional optimizations rather than correctness requirements.
 
 ## Flue Built-Ins We Rely On
 

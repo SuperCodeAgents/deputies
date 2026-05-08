@@ -72,29 +72,20 @@ Product state is the source of truth for the app. Flue state is the source of tr
 
 ## Required Table
 
-Add a dedicated table for Flue session data.
+The current implementation uses a dedicated table for Flue session data.
 
 ```txt
 flue_sessions
   id text primary key
-  agent_id text not null
-  session_id text not null
-  app_session_id uuid references sessions(id)
   data jsonb not null
   version int not null default 1
   created_at timestamptz not null
   updated_at timestamptz not null
 ```
 
-Suggested unique index:
-
-```txt
-unique(agent_id, session_id)
-```
-
 The exact serialized `data` shape should be treated as Flue-owned. Store it opaquely and avoid querying inside it unless Flue exposes a stable contract.
 
-Store rows by the exact `id` key Flue passes into `save`, `load`, and `delete`. Do not derive or parse the key in application code unless Flue exposes that key format as a stable public contract. Product-level `agent_id`, `session_id`, and `app_session_id` columns may be useful metadata for inspection, but the Flue store must remain correct even if Flue changes its internal key format.
+Store rows by the exact `id` key Flue passes into `save`, `load`, and `delete`. Do not derive or parse the key in application code unless Flue exposes that key format as a stable public contract. The current table does not persist separate `agent_id`, `session_id`, or `app_session_id` metadata columns.
 
 ## Store Interface
 
@@ -200,11 +191,11 @@ UAT tests:
 
 - built artifact starts, runs a session, restarts, continues same session.
 
-## Open Questions For Implementation
+## Current Implementation Notes
 
-- Confirm the exact Flue `SessionStore` type signature from the installed SDK version.
-- Confirm whether Flue expects store IDs to be globally unique or scoped by agent.
-- Confirm whether Flue writes session metadata that should reference product session IDs.
-- Confirm whether Flue task/child sessions require recursive delete handling in our store.
+- `api/src/runner-flue/session-store.ts` implements Flue's `SessionStore` interface with Postgres.
+- `save`, `load`, and `delete` use the exact opaque store key provided by Flue.
+- `RealFlueAgentFactory` uses the configured session store as both `defaultStore` and `persist`.
+- During cancellation, `FlueRunner` snapshots and restores the active Flue session to avoid persisting partial aborted turns.
 
-These are implementation details, not design blockers. The architecture assumes a custom Postgres Flue session store is required.
+The architecture assumes a custom Postgres Flue session store is required for durable deployments.
