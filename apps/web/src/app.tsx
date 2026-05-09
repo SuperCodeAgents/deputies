@@ -207,14 +207,11 @@ export function App() {
   const [newThreadRepository, setNewThreadRepository] = useState('');
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
-  const [prompt, setPrompt] = useState('');
-  const [repository, setRepository] = useState('');
   const [editingMessageId, setEditingMessageId] = useState('');
   const [messageDraft, setMessageDraft] = useState('');
   const [draftToken, setDraftToken] = useState(token);
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [threadSearch, setThreadSearch] = useState('');
   const [archivedSessionsOpen, setArchivedSessionsOpen] = useState(() => localStorage.getItem(archivedSessionsOpenStorageKey) === 'true');
   const [themePreference, setThemePreference] = useState<ThemePreference>(loadThemePreference);
   const [error, setError] = useState<string>('');
@@ -248,9 +245,7 @@ export function App() {
   const selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null;
   const selectedRepository = repositoryLabel(selectedSession?.context?.repository);
   const selectedSessionArchived = selectedSession?.status === 'archived';
-  const filteredSessions = filterSessions(sortSessionsByLastActivity(sessions), threadSearch);
-  const activeSessions = filteredSessions.filter((session) => session.status !== 'archived');
-  const archivedSessions = filteredSessions.filter((session) => session.status === 'archived');
+  const sortedSessions = sortSessionsByLastActivity(sessions);
 
   useEffect(() => {
     if (!startupLoading || connectionStatus.state !== 'ok') return;
@@ -522,26 +517,27 @@ export function App() {
     }
   }
 
-  async function handleSendMessage(event: FormEvent) {
-    event.preventDefault();
-    if (sendMessageInFlightRef.current || !selectedSessionId || selectedSessionArchived || !prompt.trim()) return;
+  async function handleSendMessage(input: { prompt: string; repository: string }): Promise<boolean> {
+    const messagePrompt = input.prompt.trim();
+    if (sendMessageInFlightRef.current || !selectedSessionId || selectedSessionArchived || !messagePrompt) return false;
     sendMessageInFlightRef.current = true;
     setError('');
     try {
-      const repositoryInput = repository.trim();
+      const repositoryInput = input.repository.trim();
       const message = await enqueueMessage({
         sessionId: selectedSessionId,
-        prompt: prompt.trim(),
+        prompt: messagePrompt,
         token,
         ...(repositoryInput ? { repository: repositoryInput } : {}),
       });
       setMessages((current) => [...current, message]);
       setThreadAutoFollowEnabled(true);
-      setPrompt('');
       await refreshSessions();
       await refreshSessionDetail(selectedSessionId);
+      return true;
     } catch (err) {
       handleApiError(err);
+      return false;
     } finally {
       sendMessageInFlightRef.current = false;
     }
@@ -690,8 +686,6 @@ export function App() {
     setEvents([]);
     setArtifacts([]);
     setCallbacks([]);
-    setPrompt('');
-    setRepository('');
     eventCursor.current = 0;
   }
 
@@ -844,15 +838,13 @@ export function App() {
             )}
           >
             <ThreadSidebar
-              activeSessions={activeSessions}
-              archivedSessions={archivedSessions}
               archivedSessionsOpen={archivedSessionsOpen || Boolean(selectedSessionArchived)}
               authRequired={bearerAuthRequired || sessionAuthRequired}
               canCallApi={canCallApi}
               health={health}
               connectionStatus={connectionStatus}
               loading={loading}
-              search={threadSearch}
+              sessions={sortedSessions}
               selectedSessionId={selectedSessionId}
               token={token}
               onArchive={archiveFromList}
@@ -860,7 +852,6 @@ export function App() {
               onCollapse={collapseSidebar}
               onNewThread={startNewThread}
               onRefresh={refreshSessions}
-              onSearch={setThreadSearch}
               onSelect={selectSession}
               onSignOut={signOut}
               onThemeChange={setThemePreference}
@@ -921,29 +912,12 @@ export function App() {
                     ) : null}
                   </div>
                   {selectedSessionArchived ? <ArchivedSessionNotice onRestore={restoreSelectedSession} /> : null}
-                  <form className="shrink-0 bg-background/95 py-3" onSubmit={handleSendMessage}>
-                    <Card className="overflow-hidden bg-card/90">
-                      <Textarea
-                        className="min-h-28 border-0 bg-transparent focus:ring-0"
-                        value={prompt}
-                        onChange={(event) => setPrompt(event.target.value)}
-                        onKeyDown={(event) => submitOnEnter(event)}
-                        placeholder={selectedSessionArchived ? 'Restore this archived session before sending new work.' : 'Ask your deputy to investigate, change code, or follow up...'}
-                        disabled={selectedSessionArchived}
-                      />
-                      <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
-                        <Input
-                          className="h-8 min-w-0 flex-1 text-xs min-[480px]:max-w-80"
-                          value={repository}
-                          onChange={(event) => setRepository(event.target.value)}
-                          placeholder={selectedRepository ? 'Override repo...' : 'GitHub repo, e.g. owner/repo'}
-                          disabled={selectedSessionArchived}
-                        />
-                        {selectedSessionArchived ? <span className="min-w-full text-center sm:min-w-0 sm:flex-1 sm:text-left">Archived sessions are read-only until restored.</span> : null}
-                        <Button className="ml-auto shrink-0 whitespace-nowrap" type="submit" disabled={selectedSessionArchived || !prompt.trim()}>Send message</Button>
-                      </div>
-                    </Card>
-                  </form>
+                  <MessageComposer
+                    key={selectedSession.id}
+                    archived={selectedSessionArchived}
+                    hasSelectedRepository={Boolean(selectedRepository)}
+                    onSubmit={handleSendMessage}
+                  />
                 </section>
                 <DesktopContextPanel repository={selectedRepository} artifacts={artifacts} callbacks={callbacks} onReplayCallback={handleReplayCallback} />
               </div>
@@ -1002,15 +976,13 @@ function ConnectionStatusBanner(props: ConnectionStatusBannerProps) {
 }
 
 type ThreadSidebarProps = {
-  activeSessions: Session[];
-  archivedSessions: Session[];
   archivedSessionsOpen: boolean;
   authRequired: boolean;
   canCallApi: boolean;
   connectionStatus: ConnectionStatus;
   health: Health | null;
   loading: boolean;
-  search: string;
+  sessions: Session[];
   selectedSessionId: string;
   themePreference: ThemePreference;
   token: string;
@@ -1019,7 +991,6 @@ type ThreadSidebarProps = {
   onCollapse: () => void;
   onNewThread: () => void;
   onRefresh: () => void;
-  onSearch: (value: string) => void;
   onSelect: (sessionId: string) => void;
   onSignOut: () => void;
   onThemeChange: (value: ThemePreference) => void;
@@ -1027,7 +998,11 @@ type ThreadSidebarProps = {
 };
 
 function ThreadSidebar(props: ThreadSidebarProps) {
-  const searching = Boolean(props.search.trim());
+  const [search, setSearch] = useState('');
+  const filteredSessions = filterSessions(props.sessions, search);
+  const activeSessions = filteredSessions.filter((session) => session.status !== 'archived');
+  const archivedSessions = filteredSessions.filter((session) => session.status === 'archived');
+  const searching = Boolean(search.trim());
 
   function handleArchivedToggle(event: SyntheticEvent<HTMLDetailsElement>) {
     if (searching) return;
@@ -1047,26 +1022,26 @@ function ThreadSidebar(props: ThreadSidebarProps) {
         </div>
       </div>
       <div className="relative mb-3 shrink-0">
-        <Input className="pr-9" value={props.search} onChange={(event) => props.onSearch(event.target.value)} placeholder="Search sessions..." />
-        {props.search ? (
-          <Button className="absolute right-1 top-1 h-8 w-8 p-0" variant="ghost" size="icon" onClick={() => props.onSearch('')} aria-label="Clear search" title="Clear search">
+        <Input className="pr-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search sessions..." />
+        {search ? (
+          <Button className="absolute right-1 top-1 h-8 w-8 p-0" variant="ghost" size="icon" onClick={() => setSearch('')} aria-label="Clear search" title="Clear search">
             <X className="h-3.5 w-3.5" />
           </Button>
         ) : null}
       </div>
       <div className="min-h-0 min-w-0 flex-1 overflow-auto" data-thread-scroll-exclude="true">
         <div className="grid min-w-0 gap-1">
-          {props.activeSessions.map((session) => (
+          {activeSessions.map((session) => (
             <SessionButton key={session.id} session={session} selected={session.id === props.selectedSessionId} onArchive={props.onArchive} onSelect={props.onSelect} />
           ))}
-          {!props.activeSessions.length ? <p className="px-2 py-3 text-sm text-muted-foreground">{props.search ? 'No matching active sessions.' : 'No active sessions.'}</p> : null}
+          {!activeSessions.length ? <p className="px-2 py-3 text-sm text-muted-foreground">{search ? 'No matching active sessions.' : 'No active sessions.'}</p> : null}
         </div>
-        {props.archivedSessions.length || searching ? (
+        {archivedSessions.length || searching ? (
           <details className="mt-4 border-t border-border pt-3" open={searching || props.archivedSessionsOpen} onToggle={handleArchivedToggle}>
-            <summary className="flex cursor-pointer items-center gap-1 text-sm font-medium text-muted-foreground"><ChevronDown className="h-4 w-4" /> Archived · {props.archivedSessions.length}</summary>
-            {props.archivedSessions.length ? (
+            <summary className="flex cursor-pointer items-center gap-1 text-sm font-medium text-muted-foreground"><ChevronDown className="h-4 w-4" /> Archived · {archivedSessions.length}</summary>
+            {archivedSessions.length ? (
               <div className="mt-2 grid min-w-0 gap-1 opacity-80">
-                {props.archivedSessions.map((session) => <SessionButton key={session.id} session={session} selected={session.id === props.selectedSessionId} onSelect={props.onSelect} onUnarchive={props.onUnarchive} />)}
+                {archivedSessions.map((session) => <SessionButton key={session.id} session={session} selected={session.id === props.selectedSessionId} onSelect={props.onSelect} onUnarchive={props.onUnarchive} />)}
               </div>
             ) : <p className="px-2 py-3 text-sm text-muted-foreground">No matching archived sessions.</p>}
           </details>
@@ -1262,6 +1237,47 @@ function NewThreadPanel(props: {
         </form>
       </Card>
     </section>
+  );
+}
+
+function MessageComposer(props: {
+  archived: boolean;
+  hasSelectedRepository: boolean;
+  onSubmit: (input: { prompt: string; repository: string }) => Promise<boolean>;
+}) {
+  const [prompt, setPrompt] = useState('');
+  const [repository, setRepository] = useState('');
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const sent = await props.onSubmit({ prompt, repository });
+    if (sent) setPrompt('');
+  }
+
+  return (
+    <form className="shrink-0 bg-background/95 py-3" onSubmit={handleSubmit}>
+      <Card className="overflow-hidden bg-card/90">
+        <Textarea
+          className="min-h-28 border-0 bg-transparent focus:ring-0"
+          value={prompt}
+          onChange={(event) => setPrompt(event.target.value)}
+          onKeyDown={(event) => submitOnEnter(event)}
+          placeholder={props.archived ? 'Restore this archived session before sending new work.' : 'Ask your deputy to investigate, change code, or follow up...'}
+          disabled={props.archived}
+        />
+        <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
+          <Input
+            className="h-8 min-w-0 flex-1 text-xs min-[480px]:max-w-80"
+            value={repository}
+            onChange={(event) => setRepository(event.target.value)}
+            placeholder={props.hasSelectedRepository ? 'Override repo...' : 'GitHub repo, e.g. owner/repo'}
+            disabled={props.archived}
+          />
+          {props.archived ? <span className="min-w-full text-center sm:min-w-0 sm:flex-1 sm:text-left">Archived sessions are read-only until restored.</span> : null}
+          <Button className="ml-auto shrink-0 whitespace-nowrap" type="submit" disabled={props.archived || !prompt.trim()}>Send message</Button>
+        </div>
+      </Card>
+    </form>
   );
 }
 
