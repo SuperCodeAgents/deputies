@@ -227,6 +227,107 @@ it('shows a jump control instead of autoscrolling after the user scrolls up', as
   expect(scrollIntoView).toHaveBeenCalledWith({ block: 'end', behavior: 'smooth' });
 });
 
+it('scrolls session messages when wheeling outside nested scroll areas', async () => {
+  mockApi({
+    messages: [messageFixture({ id: '00000000-0000-4000-8000-000000000133', sequence: 1, status: 'completed', prompt: 'scrollable work' })],
+  });
+  render(<App />);
+
+  const messageLog = setScrollMetrics(await screen.findByRole('log', { name: 'Session messages' }), {
+    clientHeight: 500,
+    scrollHeight: 2000,
+  });
+
+  fireEvent.wheel(screen.getByRole('heading', { name: 'Existing session' }), { deltaY: 180 });
+
+  expect(messageLog.scrollTop).toBe(180);
+});
+
+it('does not redirect wheel events when the sessions area can scroll', async () => {
+  mockApi({
+    sessions: [
+      session,
+      { ...session, id: '00000000-0000-4000-8000-000000000002', title: 'Second session' },
+    ],
+    messages: [messageFixture({ id: '00000000-0000-4000-8000-000000000134', sequence: 1, status: 'completed', prompt: 'scrollable work' })],
+  });
+  render(<App />);
+
+  const messageLog = setScrollMetrics(await screen.findByRole('log', { name: 'Session messages' }), {
+    clientHeight: 500,
+    scrollHeight: 2000,
+  });
+
+  setScrollMetrics(screen.getByText('Second session').closest('[data-thread-scroll-exclude="true"]'), {
+    overflowY: 'auto',
+    clientHeight: 100,
+    scrollHeight: 400,
+  });
+
+  fireEvent.wheel(screen.getByText('Second session'), { deltaY: 180 });
+
+  expect(messageLog.scrollTop).toBe(0);
+
+  const sessionsPane = screen.getByText('Second session').closest('[data-thread-scroll-exclude="true"]') as HTMLElement;
+  sessionsPane.scrollTop = 300;
+  fireEvent.wheel(screen.getByText('Second session'), { deltaY: 180 });
+
+  expect(messageLog.scrollTop).toBe(0);
+});
+
+it('scrolls session messages from the sessions area when it has no scrollbar', async () => {
+  mockApi({
+    sessions: [
+      session,
+      { ...session, id: '00000000-0000-4000-8000-000000000002', title: 'Second session' },
+    ],
+    messages: [messageFixture({ id: '00000000-0000-4000-8000-000000000136', sequence: 1, status: 'completed', prompt: 'scrollable work' })],
+  });
+  render(<App />);
+
+  const messageLog = setScrollMetrics(await screen.findByRole('log', { name: 'Session messages' }), {
+    clientHeight: 500,
+    scrollHeight: 2000,
+  });
+
+  setScrollMetrics(screen.getByText('Second session').closest('[data-thread-scroll-exclude="true"]'), {
+    overflowY: 'auto',
+    clientHeight: 400,
+    scrollHeight: 400,
+  });
+
+  fireEvent.wheel(screen.getByText('Second session'), { deltaY: 180 });
+
+  expect(messageLog.scrollTop).toBe(180);
+});
+
+it('lets nested chat panes scroll first and releases wheel scroll at their edge', async () => {
+  mockApi({
+    messages: [messageFixture({ id: '00000000-0000-4000-8000-000000000135', sequence: 1, status: 'completed', prompt: 'nested scroll work' })],
+  });
+  render(<App />);
+
+  const messageLog = setScrollMetrics(await screen.findByRole('log', { name: 'Session messages' }), {
+    clientHeight: 500,
+    scrollHeight: 2000,
+  });
+
+  const nestedPane = document.createElement('div');
+  setScrollMetrics(nestedPane, {
+    overflowY: 'auto',
+    clientHeight: 100,
+    scrollHeight: 400,
+  });
+  messageLog.append(nestedPane);
+
+  fireEvent.wheel(nestedPane, { deltaY: 180 });
+  expect(messageLog.scrollTop).toBe(0);
+
+  nestedPane.scrollTop = 300;
+  fireEvent.wheel(nestedPane, { deltaY: 180 });
+  expect(messageLog.scrollTop).toBe(180);
+});
+
 it('opens only the global SSE stream for updates', async () => {
   let streamOpenCount = 0;
   let globalStreamOpenCount = 0;
@@ -587,6 +688,24 @@ function mockApi(options: MockApiOptions = {}) {
 
     return jsonResponse({ error: 'not_found', message: 'Not found' }, 404);
   });
+}
+
+type ScrollMetrics = {
+  clientHeight: number;
+  scrollHeight: number;
+  scrollTop?: number;
+  overflowY?: string;
+};
+
+function setScrollMetrics(element: Element | null, metrics: ScrollMetrics): HTMLElement {
+  if (!(element instanceof HTMLElement)) throw new Error('Expected an HTMLElement for scroll metrics');
+  if (metrics.overflowY) element.style.overflowY = metrics.overflowY;
+  Object.defineProperties(element, {
+    clientHeight: { configurable: true, value: metrics.clientHeight },
+    scrollHeight: { configurable: true, value: metrics.scrollHeight },
+    scrollTop: { configurable: true, writable: true, value: metrics.scrollTop ?? 0 },
+  });
+  return element;
 }
 
 function messageFixture(input: { id: string; sequence: number; status: string; prompt: string; source?: string; context?: Record<string, unknown> }) {

@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent, SyntheticEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, SyntheticEvent, WheelEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AlertTriangle, Archive, Check, ChevronDown, Copy, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, RotateCcw, Sun, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -101,6 +101,52 @@ function isThreadNearBottom(container: HTMLElement): boolean {
   return container.scrollHeight - container.scrollTop - container.clientHeight <= threadAutoFollowThreshold;
 }
 
+function isScrollableElement(element: Element): element is HTMLElement {
+  if (!(element instanceof HTMLElement)) return false;
+  const overflowY = window.getComputedStyle(element).overflowY;
+  return ['auto', 'scroll', 'overlay'].includes(overflowY) && element.scrollHeight > element.clientHeight;
+}
+
+function canScrollElementByWheel(element: HTMLElement, deltaY: number): boolean {
+  if (deltaY < 0) return element.scrollTop > 0;
+  if (deltaY > 0) return element.scrollTop + element.clientHeight < element.scrollHeight;
+  return false;
+}
+
+function findScrollableAncestor(target: EventTarget | null, root: HTMLElement): HTMLElement | null {
+  if (!(target instanceof Element)) return null;
+
+  for (let element: Element | null = target; element && element !== root; element = element.parentElement) {
+    if (isScrollableElement(element)) return element;
+  }
+
+  return null;
+}
+
+function shouldLetWheelTargetHandleScroll(target: EventTarget | null, root: HTMLElement, threadScroll: HTMLElement, deltaY: number): boolean {
+  if (!(target instanceof Element)) return false;
+
+  const excludedPane = target.closest('[data-thread-scroll-exclude="true"]');
+  if (excludedPane instanceof HTMLElement) {
+    const scrollablePane = findScrollableAncestor(target, excludedPane) ?? (isScrollableElement(excludedPane) ? excludedPane : null);
+    return Boolean(scrollablePane);
+  }
+
+  const scrollable = findScrollableAncestor(target, root);
+  if (!scrollable) return false;
+  if (scrollable === threadScroll) return true;
+  return canScrollElementByWheel(scrollable, deltaY);
+}
+
+function scrollThreadByWheel(container: HTMLElement, deltaY: number): void {
+  if (typeof container.scrollBy === 'function') {
+    container.scrollBy({ top: deltaY, behavior: 'auto' });
+    return;
+  }
+
+  container.scrollTop += deltaY;
+}
+
 function initialConnectionStatus(): ConnectionStatus {
   return { state: 'ok', message: liveConnectionMessage };
 }
@@ -184,6 +230,7 @@ export function App() {
   const globalEventCursor = useRef(0);
   const lastBackgroundedAt = useRef<number | null>(null);
   const wakeRecoveryActive = useRef(false);
+  const appShellRef = useRef<HTMLElement | null>(null);
   const threadScrollRef = useRef<HTMLDivElement | null>(null);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
   const threadAutoFollowRef = useRef(true);
@@ -669,6 +716,17 @@ export function App() {
     setThreadAutoFollowEnabled(isThreadNearBottom(container));
   }
 
+  function handleAppWheel(event: WheelEvent<HTMLElement>): void {
+    if (!event.deltaY || event.defaultPrevented) return;
+    const appShell = appShellRef.current;
+    const threadScroll = threadScrollRef.current;
+    if (!appShell || !threadScroll || shouldLetWheelTargetHandleScroll(event.target, appShell, threadScroll, event.deltaY)) return;
+
+    event.preventDefault();
+    scrollThreadByWheel(threadScroll, event.deltaY);
+    handleThreadScroll();
+  }
+
   function jumpToLatestThreadActivity() {
     setThreadAutoFollowEnabled(true);
     scrollThreadToBottom('smooth');
@@ -753,7 +811,7 @@ export function App() {
   }
 
   return (
-    <main className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+    <main ref={appShellRef} onWheelCapture={handleAppWheel} className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
       {error ? <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</div> : null}
       {!startupLoading && connectionStatus.state !== 'ok' ? <ConnectionStatusBanner status={connectionStatus} /> : null}
 
@@ -996,7 +1054,7 @@ function ThreadSidebar(props: ThreadSidebarProps) {
           </Button>
         ) : null}
       </div>
-      <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+      <div className="min-h-0 min-w-0 flex-1 overflow-auto" data-thread-scroll-exclude="true">
         <div className="grid min-w-0 gap-1">
           {props.activeSessions.map((session) => (
             <SessionButton key={session.id} session={session} selected={session.id === props.selectedSessionId} onArchive={props.onArchive} onSelect={props.onSelect} />
@@ -1488,7 +1546,7 @@ function MobileContextPanel(props: { repository: string | null; artifacts: Artif
 
 function DesktopContextPanel(props: { repository: string | null; artifacts: Artifact[]; callbacks: CallbackDelivery[]; onReplayCallback: (callbackId: string) => void }) {
   return (
-    <aside className="hidden min-h-0 overflow-auto border-l border-border bg-card/50 p-4 lg:block">
+    <aside className="hidden min-h-0 overflow-auto border-l border-border bg-card/50 p-4 lg:block" data-thread-scroll-exclude="true">
       <h2 className="text-sm font-semibold">Context</h2>
       <ContextPanelContent {...props} />
     </aside>
