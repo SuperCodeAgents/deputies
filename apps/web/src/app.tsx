@@ -642,7 +642,7 @@ export function App() {
       const session = await archiveSession({ sessionId: selectedSessionId, token });
       applyArchivedSession(session);
     } catch (err) {
-      if (rollback) restoreArchiveRollback(rollback);
+      if (rollback) restoreSessionStatusRollback(rollback);
       handleApiError(err);
     }
   }
@@ -820,7 +820,7 @@ export function App() {
     setSidebarOpen(true);
   }
 
-  type ArchiveRollback = {
+  type SessionStatusRollback = {
     artifacts: Artifact[];
     callbacks: CallbackDelivery[];
     events: AgentEvent[];
@@ -830,7 +830,7 @@ export function App() {
     session: Session;
   };
 
-  function archiveOptimistically(sessionId: string): ArchiveRollback | null {
+  function archiveOptimistically(sessionId: string): SessionStatusRollback | null {
     const session = sessions.find((candidate) => candidate.id === sessionId);
     if (!session) return null;
     const rollback = {
@@ -846,7 +846,7 @@ export function App() {
     return rollback;
   }
 
-  function restoreArchiveRollback(rollback: ArchiveRollback) {
+  function restoreSessionStatusRollback(rollback: SessionStatusRollback) {
     setSessions((current) => current.map((candidate) => (candidate.id === rollback.session.id ? rollback.session : candidate)));
     if (rollback.selectedSessionId === rollback.session.id) {
       localStorage.setItem(selectedSessionStorageKey, rollback.selectedSessionId);
@@ -859,6 +859,22 @@ export function App() {
       setArtifacts(rollback.artifacts);
       setCallbacks(rollback.callbacks);
     }
+  }
+
+  function unarchiveOptimistically(sessionId: string): SessionStatusRollback | null {
+    const session = sessions.find((candidate) => candidate.id === sessionId);
+    if (!session) return null;
+    const rollback = {
+      artifacts,
+      callbacks,
+      events,
+      isCreatingThread,
+      messages,
+      selectedSessionId,
+      session,
+    };
+    setSessions((current) => current.map((candidate) => (candidate.id === sessionId ? { ...candidate, status: 'idle' } : candidate)));
+    return rollback;
   }
 
   function applyArchivedSession(session: Session) {
@@ -884,17 +900,19 @@ export function App() {
       const session = await archiveSession({ sessionId, token });
       applyArchivedSession(session);
     } catch (err) {
-      if (rollback) restoreArchiveRollback(rollback);
+      if (rollback) restoreSessionStatusRollback(rollback);
       handleApiError(err);
     }
   }
 
   async function unarchiveFromList(sessionId: string) {
     setError('');
+    const rollback = unarchiveOptimistically(sessionId);
     try {
       const session = await unarchiveSession({ sessionId, token });
       setSessions((current) => current.map((candidate) => (candidate.id === session.id ? session : candidate)));
     } catch (err) {
+      if (rollback) restoreSessionStatusRollback(rollback);
       handleApiError(err);
     }
   }
@@ -902,10 +920,12 @@ export function App() {
   async function restoreSelectedSession() {
     if (!selectedSessionId) return;
     setError('');
+    const rollback = unarchiveOptimistically(selectedSessionId);
     try {
       const session = await unarchiveSession({ sessionId: selectedSessionId, token });
       setSessions((current) => current.map((candidate) => (candidate.id === session.id ? session : candidate)));
     } catch (err) {
+      if (rollback) restoreSessionStatusRollback(rollback);
       handleApiError(err);
     }
   }

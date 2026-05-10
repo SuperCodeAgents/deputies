@@ -32,6 +32,7 @@ type MockApiOptions = {
   globalStreamStatus?: number;
   hangArchive?: boolean;
   hangSessions?: boolean;
+  hangUnarchive?: boolean;
   hangSessionsAfterFirst?: boolean;
   authMode?: 'none' | 'bearer' | 'session';
   sandboxProvider?: string;
@@ -733,6 +734,19 @@ it('keeps the new-session page selected after archiving and refreshing', async (
   expect(screen.queryByText('This session is archived.')).not.toBeInTheDocument();
 });
 
+it('restores the selected session before waiting for the restore request', async () => {
+  const archivedSession = { ...session, status: 'archived', title: 'Archived chosen' };
+  localStorage.setItem('deputies-selected-session-id', archivedSession.id);
+  mockApi({ sessionOverride: archivedSession, sessions: [archivedSession], hangUnarchive: true });
+  render(<App />);
+
+  expect(await screen.findByText('This session is archived.')).toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole('button', { name: 'Restore session' }).find((button) => button.textContent?.includes('Restore session'))!);
+
+  expect(screen.queryByText('This session is archived.')).not.toBeInTheDocument();
+  expect(screen.getByPlaceholderText('Ask your deputy to investigate, change code, or follow up...')).not.toBeDisabled();
+});
+
 it('warns when running in local sandbox mode', async () => {
   mockApi({ sandboxProvider: 'local' });
   render(<App />);
@@ -779,6 +793,7 @@ function mockApi(options: MockApiOptions = {}) {
     }
 
     if (url.pathname === `/sessions/${currentSession.id}/unarchive` && method === 'POST') {
+      if (options.hangUnarchive) return new Promise<Response>(() => undefined);
       currentSession = { ...currentSession, status: 'idle' };
       return jsonResponse({ session: currentSession });
     }
