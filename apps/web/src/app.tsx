@@ -147,6 +147,11 @@ function scrollThreadByWheel(container: HTMLElement, deltaY: number): void {
   container.scrollTop += deltaY;
 }
 
+function isThreadComposerFocused(): boolean {
+  const activeElement = document.activeElement;
+  return activeElement instanceof HTMLElement && Boolean(activeElement.closest('[data-thread-composer="true"]'));
+}
+
 function initialConnectionStatus(): ConnectionStatus {
   return { state: 'ok', message: liveConnectionMessage };
 }
@@ -397,6 +402,12 @@ export function App() {
       autoScrolledSessionId.current = selectedSessionId;
       setThreadAutoFollowEnabled(true);
       scrollThreadToBottom();
+      return;
+    }
+
+    if (isThreadComposerFocused()) {
+      setThreadAutoFollowEnabled(false);
+      setShowJumpToLatest(true);
       return;
     }
 
@@ -1311,7 +1322,7 @@ function MessageComposer(props: {
   }
 
   return (
-    <form className="shrink-0 bg-background/95 py-3" onSubmit={handleSubmit}>
+    <form className="shrink-0 bg-background/95 py-3" data-thread-composer="true" onSubmit={handleSubmit}>
       <Card className="overflow-hidden bg-card/90">
         <Textarea
           className="min-h-28 border-0 bg-transparent focus:ring-0"

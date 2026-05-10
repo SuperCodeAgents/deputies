@@ -342,6 +342,38 @@ it('shows a jump control instead of autoscrolling after the user scrolls up', as
   expect(scrollIntoView).toHaveBeenCalledWith({ block: 'end', behavior: 'smooth' });
 });
 
+it('pauses autoscroll while the message composer has focus', async () => {
+  let pushGlobalEvent: StreamEventPusher = () => undefined;
+  let globalStreamOpen = false;
+  const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView);
+  mockApi({
+    messages: [messageFixture({ id: '00000000-0000-4000-8000-000000000137', sequence: 1, status: 'processing', prompt: 'long running work' })],
+    onGlobalStreamOpen: (push) => {
+      globalStreamOpen = true;
+      pushGlobalEvent = push;
+    },
+  });
+  render(<App />);
+
+  const messageLog = setScrollMetrics(await screen.findByRole('log', { name: 'Session messages' }), {
+    clientHeight: 500,
+    scrollHeight: 2000,
+    scrollTop: 1500,
+  });
+  const composer = screen.getByPlaceholderText('Ask your deputy to investigate, change code, or follow up...');
+  composer.focus();
+  expect(document.activeElement).toBe(composer);
+  scrollIntoView.mockClear();
+
+  await waitFor(() => expect(globalStreamOpen).toBe(true));
+  pushGlobalEvent(eventFixture({ id: 2, sequence: 1, type: 'agent_text_delta', messageId: '00000000-0000-4000-8000-000000000137', payload: { text: 'streaming while typing' } }));
+
+  expect(await screen.findByText('streaming while typing')).toBeInTheDocument();
+  expect(scrollIntoView).not.toHaveBeenCalled();
+  expect(messageLog.scrollTop).toBe(1500);
+  expect(await screen.findByRole('button', { name: /Jump to latest/ })).toBeInTheDocument();
+});
+
 it('scrolls session messages when wheeling outside nested scroll areas', async () => {
   mockApi({
     messages: [messageFixture({ id: '00000000-0000-4000-8000-000000000133', sequence: 1, status: 'completed', prompt: 'scrollable work' })],
