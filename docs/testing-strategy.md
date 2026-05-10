@@ -83,6 +83,8 @@ Current local policy:
 - Real local Flue UAT is opt-in: set `RUN_REAL_LOCAL_FLUE_UAT=true`, `API_AUTH_MODE=none`, `FLUE_MODEL`, and the model provider credentials required by that model before running `pnpm --dir apps/api exec vitest run --config vitest.uat.config.ts test/uat/real-local-flue.test.ts`.
 - Real Daytona/Flue UAT is opt-in: build first and set `RUN_REAL_DAYTONA_FLUE_UAT=true`, `API_AUTH_MODE=none`, `TEST_DATABASE_URL`, `DAYTONA_API_KEY`, `FLUE_MODEL`, and the model provider credentials required by that model before running `pnpm api:test:uat`.
 - `pnpm db:up` starts local Postgres from `deploy/local/docker-compose.yml` and creates both `flue` and `flue_test`.
+- Daytona sandboxes should not assume nested Docker is available. Use `./deploy/daytona/start-postgres.sh` to start Postgres directly in the sandbox, then set `DATABASE_URL=postgres://flue:flue@127.0.0.1:5432/flue` and `TEST_DATABASE_URL=postgres://flue:flue@127.0.0.1:5432/flue_test`.
+- For broad Daytona sandbox verification, run `./deploy/daytona/full-check.sh`; it starts Postgres, installs dependencies, runs migrations, and exercises API and web checks including Playwright e2e.
 - Integration tests apply migrations to `flue_test` and truncate app tables between tests.
 - Do not run `api:test:integration` and `api:test:uat` concurrently against the same `TEST_DATABASE_URL`; both suites reset shared tables.
 - Do not run `api:test:load` concurrently with integration or UAT tests against the same `TEST_DATABASE_URL`; it also resets shared tables.

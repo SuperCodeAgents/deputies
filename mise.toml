@@ -29,3 +29,15 @@ run = "railway up --service web --detach -m 'deploy web'"
 [tasks.deploy]
 description = "Deploy API and web services to Railway"
 depends = ["deploy-api", "deploy-web"]
+
+[tasks.daytona-image-build]
+description = "Build the Daytona sandbox image"
+run = "docker build -f deploy/daytona/Dockerfile -t ${DAYTONA_IMAGE:-ghcr.io/sidpalas/deputies-daytona:node24-pg16-playwright1.59.1} ."
+
+[tasks.daytona-image-push]
+description = "Push the Daytona sandbox image"
+run = "docker push ${DAYTONA_IMAGE:-ghcr.io/sidpalas/deputies-daytona:node24-pg16-playwright1.59.1}"
+
+[tasks.daytona-image-publish]
+description = "Build and push the Daytona sandbox image"
+depends = ["daytona-image-build", "daytona-image-push"]

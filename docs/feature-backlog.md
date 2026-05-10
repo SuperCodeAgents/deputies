@@ -65,6 +65,7 @@ This is a living backlog for product, integration, runtime, and operations work.
 - Provider conformance test suite.
 - Sandbox metrics for create/connect/start/stop/destroy latency.
 - Object storage integration for large logs/artifacts.
+- Repository-aware Daytona image or snapshot selection so common repos can use pre-baked dependencies instead of the global `DAYTONA_IMAGE` default.
 
 ## Scale And Operations
 

@@ -14,6 +14,8 @@ Initial providers may include:
 - `ecs`: Fargate tasks in AWS.
 - `modal` or others later, if desired.
 
+Daytona sandboxes are created from OCI images, but agents should not assume nested Docker or Docker Compose is available inside those sandboxes. The repo-owned Daytona image and scripts in `deploy/daytona/` install Postgres directly and expose `./deploy/daytona/start-postgres.sh` for Postgres-backed tests.
+
 ## Design Rule
 
 The worker coordinates product sandbox lifecycle through the provider interface. The Flue runner receives a Flue-compatible sandbox connector derived from the provider handle.
