@@ -11,11 +11,11 @@ export TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://flue:flue@127.0.0.1:543
 export API_AUTH_MODE=${API_AUTH_MODE:-none}
 
 pnpm install --frozen-lockfile
-pnpm api:db:migrate
+pnpm control-plane:db:migrate
 
-pnpm api:typecheck
-pnpm api:test
-pnpm api:test:integration
+pnpm control-plane:typecheck
+pnpm control-plane:test
+pnpm control-plane:test:integration
 
 pnpm web:typecheck
 pnpm web:test

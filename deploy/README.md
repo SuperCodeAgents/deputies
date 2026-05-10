@@ -4,7 +4,7 @@ This directory contains deployment-specific configuration for running Deputies o
 
 Deployable source and shared Dockerfiles live under `apps/`:
 
-- `apps/api/`: API and worker service, including `apps/api/Dockerfile`.
+- `apps/control-plane/`: control-plane API and worker service, including `apps/control-plane/Dockerfile`.
 - `apps/web/`: static web UI build, including `apps/web/Dockerfile`.
 
 Deployment target docs:

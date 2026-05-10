@@ -20,7 +20,7 @@ Run the API with Slack config and the web proxy:
 
 ```sh
 cp .env.example .env.local
-set -a; . ./.env.local; set +a; pnpm api:dev
+set -a; . ./.env.local; set +a; pnpm control-plane:dev
 pnpm web:dev
 ```
 
@@ -77,8 +77,8 @@ Use `vercel-labs/emulate` for stateful local Slack Web API behavior and callback
 Start HTTPS emulation:
 
 ```sh
-pnpm api:portless:start
-pnpm api:emulate:slack
+pnpm control-plane:portless:start
+pnpm control-plane:emulate:slack
 ```
 
 Use:

@@ -4,7 +4,7 @@
 
 	@api path /health /auth* /sessions* /events* /webhooks*
 	handle @api {
-		reverse_proxy {$API_UPSTREAM:http://api:3583}
+		reverse_proxy {$API_UPSTREAM:http://control-plane:3583}
 	}
 
 	@assets path /assets/*

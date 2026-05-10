@@ -73,21 +73,21 @@ Use real Postgres. Use `vercel-labs/emulate` for GitHub, Slack, and AWS when tes
 
 Current local policy:
 
-- `pnpm api:test` runs deterministic unit tests from `apps/api/test/unit` without Postgres.
-- `pnpm api:test:integration` runs Postgres-backed integration tests and requires `TEST_DATABASE_URL`.
-- `pnpm api:test:load` runs a configurable Postgres-backed control-plane load profile and requires `TEST_DATABASE_URL`.
-- `pnpm api:test:uat` runs built-artifact UAT tests from `apps/api/test/uat` and requires `TEST_DATABASE_URL` plus a prior `pnpm api:build`.
+- `pnpm control-plane:test` runs deterministic unit tests from `apps/control-plane/test/unit` without Postgres.
+- `pnpm control-plane:test:integration` runs Postgres-backed integration tests and requires `TEST_DATABASE_URL`.
+- `pnpm control-plane:test:load` runs a configurable Postgres-backed control-plane load profile and requires `TEST_DATABASE_URL`.
+- `pnpm control-plane:test:uat` runs built-artifact UAT tests from `apps/control-plane/test/uat` and requires `TEST_DATABASE_URL` plus a prior `pnpm control-plane:build`.
 - `pnpm web:test` runs the Vite/jsdom operator UI regression tests.
 - `pnpm web:e2e` runs Playwright browser tests such as responsive context-panel coverage.
 - `pnpm check` runs API typecheck/tests and web typecheck/jsdom tests; it does not run Playwright E2E tests.
-- Real local Flue UAT is opt-in: set `RUN_REAL_LOCAL_FLUE_UAT=true`, `API_AUTH_MODE=none`, `FLUE_MODEL`, and the model provider credentials required by that model before running `pnpm --dir apps/api exec vitest run --config vitest.uat.config.ts test/uat/real-local-flue.test.ts`.
-- Real Daytona/Flue UAT is opt-in: build first and set `RUN_REAL_DAYTONA_FLUE_UAT=true`, `API_AUTH_MODE=none`, `TEST_DATABASE_URL`, `DAYTONA_API_KEY`, `FLUE_MODEL`, and the model provider credentials required by that model before running `pnpm api:test:uat`.
+- Real local Flue UAT is opt-in: set `RUN_REAL_LOCAL_FLUE_UAT=true`, `API_AUTH_MODE=none`, `FLUE_MODEL`, and the model provider credentials required by that model before running `pnpm --dir apps/control-plane exec vitest run --config vitest.uat.config.ts test/uat/real-local-flue.test.ts`.
+- Real Daytona/Flue UAT is opt-in: build first and set `RUN_REAL_DAYTONA_FLUE_UAT=true`, `API_AUTH_MODE=none`, `TEST_DATABASE_URL`, `DAYTONA_API_KEY`, `FLUE_MODEL`, and the model provider credentials required by that model before running `pnpm control-plane:test:uat`.
 - `pnpm db:up` starts local Postgres from `deploy/local/docker-compose.yml` and creates both `flue` and `flue_test`.
 - Daytona sandboxes should not assume nested Docker is available. Use `./deploy/daytona/start-postgres.sh` to start Postgres directly in the sandbox, then set `DATABASE_URL=postgres://flue:flue@127.0.0.1:5432/flue` and `TEST_DATABASE_URL=postgres://flue:flue@127.0.0.1:5432/flue_test`.
 - For broad Daytona sandbox verification, run `./deploy/daytona/full-check.sh`; it starts Postgres, installs dependencies, runs migrations, and exercises API and web checks including Playwright e2e.
 - Integration tests apply migrations to `flue_test` and truncate app tables between tests.
-- Do not run `api:test:integration` and `api:test:uat` concurrently against the same `TEST_DATABASE_URL`; both suites reset shared tables.
-- Do not run `api:test:load` concurrently with integration or UAT tests against the same `TEST_DATABASE_URL`; it also resets shared tables.
+- Do not run `control-plane:test:integration` and `control-plane:test:uat` concurrently against the same `TEST_DATABASE_URL`; both suites reset shared tables.
+- Do not run `control-plane:test:load` concurrently with integration or UAT tests against the same `TEST_DATABASE_URL`; it also resets shared tables.
 - Load test knobs: `LOAD_SESSION_COUNT` defaults to `1000`, `LOAD_MESSAGES_PER_SESSION` defaults to `2`, `LOAD_WORKER_COUNT` defaults to `10`, and `LOAD_MAX_SECONDS` defaults to `120`.
 - Testcontainers is deferred until we need fully hermetic per-run databases.
 - Architecture fitness tests currently run with unit tests and enforce Flue SDK isolation, integration-to-runner separation, and store-to-domain-service separation.

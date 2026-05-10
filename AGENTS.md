@@ -34,7 +34,7 @@ export TEST_DATABASE_URL=postgres://flue:flue@127.0.0.1:5432/flue_test
 Run migrations before API integration or UAT checks:
 
 ```sh
-pnpm api:db:migrate
+pnpm control-plane:db:migrate
 ```
 
 ## Full Sandbox Verification
@@ -50,9 +50,9 @@ This starts Postgres, installs dependencies, runs migrations, then runs API type
 ## Common Test Commands
 
 ```sh
-pnpm api:typecheck
-pnpm api:test
-pnpm api:test:integration
+pnpm control-plane:typecheck
+pnpm control-plane:test
+pnpm control-plane:test:integration
 pnpm web:typecheck
 pnpm web:test
 VITE_API_BASE_URL=http://localhost:3583 pnpm web:e2e

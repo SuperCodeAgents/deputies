@@ -26,7 +26,7 @@ export async function loadOpenAICodexApiKey(options: OpenAICodexAuthOptions | st
   const result = await getOAuthApiKey(openAICodexProvider, auth as Record<string, OAuthCredentials>);
   if (!result) {
     const source = authBase64 ? 'FLUE_OPENAI_CODEX_AUTH_BASE64' : authJson ? 'FLUE_OPENAI_CODEX_AUTH_JSON' : authFile;
-    throw new Error(`Missing ${openAICodexProvider} OAuth credentials in ${source}. Run pnpm --dir apps/api auth:login:openai-codex first.`);
+    throw new Error(`Missing ${openAICodexProvider} OAuth credentials in ${source}. Run pnpm --dir apps/control-plane auth:login:openai-codex first.`);
   }
 
   await writeOpenAICodexAuthFile(authFile, auth, result.newCredentials);
@@ -63,7 +63,7 @@ async function readAuthFile(authFile: string): Promise<Record<string, unknown>> 
     return parseAuthFile(await readFile(authFile, 'utf8'), authFile);
   } catch (error) {
     if (isNodeError(error) && error.code === 'ENOENT') {
-      throw new Error(`Pi auth file not found at ${authFile}. Run pnpm --dir apps/api auth:login:openai-codex first.`);
+      throw new Error(`Pi auth file not found at ${authFile}. Run pnpm --dir apps/control-plane auth:login:openai-codex first.`);
     }
     throw error;
   }

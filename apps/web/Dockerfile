@@ -4,7 +4,7 @@ WORKDIR /app
 RUN corepack enable
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/api/package.json apps/api/package.json
+COPY apps/control-plane/package.json apps/control-plane/package.json
 COPY apps/web/package.json apps/web/package.json
 
 RUN pnpm install --frozen-lockfile
@@ -18,7 +18,7 @@ RUN pnpm --dir apps/web build
 FROM caddy:2.10-alpine AS runtime
 
 ENV PORT=5173
-ENV API_UPSTREAM=http://api:3583
+ENV API_UPSTREAM=http://control-plane:3583
 
 COPY apps/web/Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /app/apps/web/dist /usr/share/caddy

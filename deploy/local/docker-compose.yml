@@ -1,11 +1,11 @@
 name: deputies
 
 services:
-  api:
-    image: deputies-api
+  control-plane:
+    image: deputies-control-plane
     build:
       context: ../..
-      dockerfile: apps/api/Dockerfile
+      dockerfile: apps/control-plane/Dockerfile
     env_file:
       - ../../.env.local
     environment:
@@ -19,21 +19,21 @@ services:
     ports:
       - "3583:3583"
     depends_on:
-      api-migrate:
+      control-plane-migrate:
         condition: service_completed_successfully
     volumes:
       - ${HOME}/.pi/agent/auth.json:/run/secrets/openai-codex-auth.json
 
-  api-migrate:
-    image: deputies-api
+  control-plane-migrate:
+    image: deputies-control-plane
     build:
       context: ../..
-      dockerfile: apps/api/Dockerfile
+      dockerfile: apps/control-plane/Dockerfile
     env_file:
       - ../../.env.local
     environment:
       DATABASE_URL: postgres://flue:flue@postgres:5432/flue
-    command: ["node", "apps/api/dist/db/migrate.js"]
+    command: ["node", "apps/control-plane/dist/db/migrate.js"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -47,11 +47,11 @@ services:
         VITE_API_BASE_URL: ""
     environment:
       PORT: 5173
-      API_UPSTREAM: http://api:3583
+      API_UPSTREAM: http://control-plane:3583
     ports:
       - "5173:5173"
     depends_on:
-      - api
+      - control-plane
 
   postgres:
     image: postgres:17-alpine

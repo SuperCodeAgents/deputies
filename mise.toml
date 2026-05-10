@@ -18,17 +18,17 @@ run = "pnpm typecheck"
 description = "Run typecheck and tests"
 depends = ["typecheck", "test"]
 
-[tasks.deploy-api]
-description = "Deploy the API service to Railway"
-run = "railway up --service api --detach -m 'deploy api'"
+[tasks.deploy-control-plane]
+description = "Deploy the control-plane service to Railway"
+run = "railway up --service control-plane --detach -m 'deploy control-plane'"
 
 [tasks.deploy-web]
 description = "Deploy the web service to Railway"
 run = "railway up --service web --detach -m 'deploy web'"
 
 [tasks.deploy]
-description = "Deploy API and web services to Railway"
-depends = ["deploy-api", "deploy-web"]
+description = "Deploy control-plane and web services to Railway"
+depends = ["deploy-control-plane", "deploy-web"]
 
 [tasks.daytona-image-build]
 description = "Build the Daytona sandbox image"

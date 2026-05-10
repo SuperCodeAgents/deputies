@@ -9,8 +9,8 @@ With the default `.env.example` settings, start Postgres, run migrations, then r
 ```sh
 cp .env.example .env.local # if needed
 pnpm db:up
-set -a; . ./.env.local; set +a; pnpm api:db:migrate
-set -a; . ./.env.local; set +a; pnpm api:dev
+set -a; . ./.env.local; set +a; pnpm control-plane:db:migrate
+set -a; . ./.env.local; set +a; pnpm control-plane:dev
 pnpm web:dev
 ```
 
@@ -92,4 +92,4 @@ The web app builds to static assets:
 pnpm web:build
 ```
 
-For production-like deployments, serve `apps/web/dist` behind a reverse proxy that forwards API routes to the API service. Leave `VITE_API_BASE_URL` empty for same-origin requests. If the web assets are deployed without a proxy, set `VITE_API_BASE_URL` to the public API origin at build time and set the API service's `WEB_BASE_URL` to the deployed web UI URL so the API allows that origin for credentialed CORS requests and uses it for integration session links. Do not bake bearer tokens, static passwords, or session secrets into the web build.
+For production-like deployments, serve `apps/web/dist` behind a reverse proxy that forwards API routes to the control-plane service. Leave `VITE_API_BASE_URL` empty for same-origin requests. If the web assets are deployed without a proxy, set `VITE_API_BASE_URL` to the public API origin at build time and set the control-plane service's `WEB_BASE_URL` to the deployed web UI URL so the API allows that origin for credentialed CORS requests and uses it for integration session links. Do not bake bearer tokens, static passwords, or session secrets into the web build.

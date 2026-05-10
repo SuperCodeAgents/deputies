@@ -20,7 +20,7 @@ The goal is a deployable background coding-agent service that can start as a sin
 ## Repository Layout
 
 - `apps/`: independently runnable and deployable applications/services.
-- `apps/api/`: Node/Hono control-plane API, worker runtime, integrations, stores, and sandbox providers.
+- `apps/control-plane/`: Node/Hono control-plane API, worker runtime, integrations, stores, and sandbox providers.
 - `apps/web/`: Vite React operator UI.
 - `packages/`: reusable libraries shared by apps. It is intentionally empty until shared code is extracted.
 - `deploy/`: deployment and local runtime configuration.

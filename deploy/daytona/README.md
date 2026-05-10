@@ -57,7 +57,7 @@ If you publish under a different owner, link that package to the repo that owns 
 
 ## Deputies Configuration
 
-Set the API service environment so new agent sandboxes use this image:
+Set the control-plane service environment so new agent sandboxes use this image:
 
 ```sh
 SANDBOX_PROVIDER=daytona
@@ -107,7 +107,7 @@ TEST_DATABASE_URL=postgres://flue:flue@127.0.0.1:5432/flue_test
 API_AUTH_MODE=none
 ```
 
-UAT tests that require external credentials remain opt-in. For example, `apps/api/test/uat/real-daytona-flue.test.ts` only runs when `RUN_REAL_DAYTONA_FLUE_UAT=true` and the required Daytona/model/database env vars are set.
+UAT tests that require external credentials remain opt-in. For example, `apps/control-plane/test/uat/real-daytona-flue.test.ts` only runs when `RUN_REAL_DAYTONA_FLUE_UAT=true` and the required Daytona/model/database env vars are set.
 
 ## Start Only Postgres
 
@@ -120,7 +120,7 @@ For manual development inside a sandbox:
 Then run services directly:
 
 ```sh
-DATABASE_URL=postgres://flue:flue@127.0.0.1:5432/flue pnpm api:db:migrate
-DATABASE_URL=postgres://flue:flue@127.0.0.1:5432/flue API_AUTH_MODE=none pnpm api:dev
+DATABASE_URL=postgres://flue:flue@127.0.0.1:5432/flue pnpm control-plane:db:migrate
+DATABASE_URL=postgres://flue:flue@127.0.0.1:5432/flue API_AUTH_MODE=none pnpm control-plane:dev
 VITE_API_PROXY_TARGET=http://127.0.0.1:3583 pnpm web:dev
 ```
