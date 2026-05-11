@@ -1732,6 +1732,20 @@ function JsonPayload(props: { value: unknown }) {
   return <HighlightedCode code={JSON.stringify(props.value, null, 2)} language="json" wrap chrome={false} />;
 }
 
+type DiagnosticFailureAnalysis = {
+  title: string;
+  detail: string;
+};
+
+function FailureAnalysisNotice(props: { analysis: DiagnosticFailureAnalysis }) {
+  return (
+    <div className="rounded-md border border-warning/50 bg-warning/10 p-2 text-sm text-warning-foreground dark:text-warning" role="note">
+      <strong className="block text-foreground dark:text-warning">{props.analysis.title}</strong>
+      <p className="mt-1">{props.analysis.detail}</p>
+    </div>
+  );
+}
+
 function CancelRunButton(props: { cancelling: boolean; onCancelRun: () => void }) {
   return (
     <Button className="h-7 px-2" type="button" variant="secondary" size="sm" onClick={props.onCancelRun} disabled={props.cancelling}>
@@ -1742,12 +1756,14 @@ function CancelRunButton(props: { cancelling: boolean; onCancelRun: () => void }
 
 function Diagnostics(props: { events: AgentEvent[] }) {
   const [open, setOpen] = useState(false);
+  const failureAnalysis = analyzeDiagnosticFailure(props.events);
   if (!props.events.length) return null;
 
   return (
     <details className="min-w-0 rounded-md border border-border bg-muted/30 p-2" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary className="cursor-pointer text-sm text-muted-foreground">Diagnostics · {props.events.length} events</summary>
       <div className="mt-2 grid min-w-0 gap-2">
+        {failureAnalysis ? <FailureAnalysisNotice analysis={failureAnalysis} /> : null}
         {props.events.map((event) => (
           <article className="min-w-0 rounded-md border border-border bg-card/80 p-2" key={`${event.sessionId}-${event.sequence}`}>
             <span className="text-xs text-muted-foreground">#{event.sequence} · {formatDate(event.createdAt)}</span>
@@ -1972,6 +1988,48 @@ function groupDiagnosticsByRun(events: AgentEvent[]): Record<string, AgentEvent[
 function diagnosticGroupKeys(event: AgentEvent): string[] {
   const keys = [event.runId, event.messageId].filter((key): key is string => Boolean(key));
   return Array.from(new Set(keys));
+}
+
+function analyzeDiagnosticFailure(events: AgentEvent[]): DiagnosticFailureAnalysis | null {
+  const providerFailure = sandboxProviderFailure(events);
+  if (!providerFailure) return null;
+
+  return {
+    title: 'Likely sandbox provider issue',
+    detail: `The run was still starting a ${providerFailure.provider} sandbox when the provider returned ${providerFailure.errorSummary}. This points to an upstream sandbox/API availability issue rather than a task or repository failure.`,
+  };
+}
+
+type SandboxProviderFailure = {
+  provider: string;
+  errorSummary: string;
+};
+
+function sandboxProviderFailure(events: AgentEvent[]): SandboxProviderFailure | null {
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
+    if (!event || event.type !== 'sandbox_starting') continue;
+    const provider = typeof event.payload.provider === 'string' ? event.payload.provider : 'sandbox provider';
+    const failedEvent = events.slice(index + 1).find((candidate) => isGatewayFailureEvent(candidate));
+    if (failedEvent) return { provider, errorSummary: summarizeProviderError(failedEvent.payload.error) };
+  }
+
+  return null;
+}
+
+function isGatewayFailureEvent(event: AgentEvent): boolean {
+  if (event.type !== 'run_failed' && event.type !== 'message_failed') return false;
+  const error = typeof event.payload.error === 'string' ? event.payload.error : '';
+  return /\b(?:50[0-4]|52[0-4])\b/.test(error) || /\b(?:Bad Gateway|Service Unavailable|Gateway Timeout|upstream)\b/i.test(error);
+}
+
+function summarizeProviderError(error: unknown): string {
+  if (typeof error !== 'string' || !error.trim()) return 'an upstream error';
+  const statusMatch = error.match(/\b(50[0-4]|52[0-4])\b(?:\s+([A-Za-z][A-Za-z ]{2,40}))?/);
+  if (statusMatch?.[1]) return `${statusMatch[1]}${statusMatch[2] ? ` ${statusMatch[2].trim()}` : ''}`;
+  const gatewayMatch = error.match(/\b(Bad Gateway|Service Unavailable|Gateway Timeout|upstream[^<\n.]*)\b/i);
+  if (gatewayMatch?.[1]) return gatewayMatch[1];
+  return 'an upstream error';
 }
 
 function titleFromPrompt(prompt: string): string {
