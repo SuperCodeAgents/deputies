@@ -700,7 +700,7 @@ it('renders tool diagnostics as readable activity with raw details collapsed', a
   fireEvent.click(screen.getByText(/Activity · 3 events/));
 
   expect(screen.getByText('Command failed: pnpm test')).toBeInTheDocument();
-  expect(screen.getByText('pnpm test')).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByText('pnpm test')).toBeInTheDocument());
   expect(screen.getByText('Tests failed')).toBeInTheDocument();
   expect(screen.getAllByText('Debug details')).toHaveLength(2);
 });
@@ -750,6 +750,26 @@ it('renders custom tool text content without exposing the result envelope', asyn
   const visibleToolOutput = screen.getByText(/remote: Create a pull request/, { selector: 'p' });
   expect(visibleToolOutput).toBeInTheDocument();
   expect(visibleToolOutput).not.toHaveTextContent('customTool');
+});
+
+it('contains long diagnostic output in a scrollable panel', async () => {
+  const longOutput = Array.from({ length: 12 }, (_, index) => `line ${index + 1}: expect(messageLogHeight).toBeGreaterThan(300);`).join('\n');
+  mockApi({
+    messages: [messageFixture({ id: '00000000-0000-4000-8000-000000000127', sequence: 1, status: 'completed', prompt: 'read a large file' })],
+    events: [
+      eventFixture({ sequence: 1, type: 'message_started', runId: '00000000-0000-4000-8000-000000000227', messageId: '00000000-0000-4000-8000-000000000127', payload: { sequences: [1], batchSize: 1 } }),
+      eventFixture({ sequence: 2, type: 'tool_started', runId: '00000000-0000-4000-8000-000000000227', messageId: '00000000-0000-4000-8000-000000000127', payload: { toolName: 'read', toolCallId: 'tool-1' } }),
+      eventFixture({ sequence: 3, type: 'tool_finished', runId: '00000000-0000-4000-8000-000000000227', messageId: '00000000-0000-4000-8000-000000000127', payload: { toolName: 'read', toolCallId: 'tool-1', result: longOutput } }),
+    ],
+  });
+  render(<App />);
+
+  fireEvent.click(await screen.findByText(/Activity · 3 events/));
+
+  const panel = screen.getByRole('region', { name: 'Scrollable diagnostic output' });
+  expect(panel).toHaveClass('max-h-56');
+  expect(panel).toHaveClass('overflow-auto');
+  expect(panel).toHaveTextContent('line 12:');
 });
 
 it('identifies upstream sandbox provider failures during sandbox startup', async () => {

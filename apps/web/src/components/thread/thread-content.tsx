@@ -324,6 +324,9 @@ function Diagnostics(props: { events: AgentEvent[] }) {
   );
 }
 
+const DIAGNOSTIC_SCROLL_TEXT_LENGTH = 480;
+const DIAGNOSTIC_SCROLL_LINE_COUNT = 8;
+
 function DiagnosticActivityCard(props: { activity: DiagnosticActivity }) {
   const { activity } = props;
   return (
@@ -336,8 +339,8 @@ function DiagnosticActivityCard(props: { activity: DiagnosticActivity }) {
         <Badge className={diagnosticStatusClass(activity.status)}>{diagnosticStatusLabel(activity.status)}</Badge>
       </div>
       {activity.command ? <HighlightedCode code={activity.command} language="bash" wrap chrome={false} /> : null}
-      {activity.detail ? <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">{activity.detail}</p> : null}
-      {activity.error ? <p className="mt-2 whitespace-pre-wrap break-words rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm leading-6 text-destructive">{activity.error}</p> : null}
+      {activity.detail ? <DiagnosticText text={activity.detail} /> : null}
+      {activity.error ? <DiagnosticText text={activity.error} tone="error" /> : null}
       <details className="mt-2 min-w-0">
         <summary className="cursor-pointer text-xs text-muted-foreground">Debug details</summary>
         <div className="mt-2 grid max-h-64 min-w-0 gap-2 overflow-auto text-xs [&_figure]:my-0 [&_figure]:shadow-none [&_.highlighted-code]:text-xs">
@@ -351,6 +354,35 @@ function DiagnosticActivityCard(props: { activity: DiagnosticActivity }) {
       </details>
     </article>
   );
+}
+
+function DiagnosticText(props: { text: string; tone?: 'error' }) {
+  const isLong = isLongDiagnosticText(props.text);
+  const textClassName = cn(
+    'whitespace-pre-wrap break-words text-sm leading-6',
+    props.tone === 'error' ? 'text-destructive' : 'text-muted-foreground',
+  );
+
+  if (!isLong) {
+    return <p className={cn('mt-2', props.tone === 'error' ? 'rounded-md border border-destructive/40 bg-destructive/10 p-2' : '', textClassName)}>{props.text}</p>;
+  }
+
+  return (
+    <div
+      className={cn(
+        'mt-2 max-h-56 min-w-0 overflow-auto rounded-md border p-2 overscroll-contain',
+        props.tone === 'error' ? 'border-destructive/40 bg-destructive/10' : 'border-border bg-muted/30',
+      )}
+      aria-label={props.tone === 'error' ? 'Scrollable diagnostic error' : 'Scrollable diagnostic output'}
+      role="region"
+    >
+      <p className={textClassName}>{props.text}</p>
+    </div>
+  );
+}
+
+function isLongDiagnosticText(value: string): boolean {
+  return value.length > DIAGNOSTIC_SCROLL_TEXT_LENGTH || value.split('\n').length > DIAGNOSTIC_SCROLL_LINE_COUNT;
 }
 
 function buildDiagnosticActivities(events: AgentEvent[]): DiagnosticActivity[] {
@@ -388,7 +420,7 @@ function formatToolActivity(start: AgentEvent | undefined, finish: AgentEvent | 
   const isError = finish ? payload.isError === true : false;
   const command = toolCommand(start, finish);
   const taskPrompt = toolName === 'task' ? stringValue(payload.prompt) : undefined;
-  const resultPreview = previewValue(payload.result);
+  const resultPreview = previewToolResult(toolName, payload.result);
   const errorPreview = previewValue(payload.error) ?? (isError ? resultPreview : undefined);
   const customTool = customToolName(payload.result);
 
@@ -510,6 +542,12 @@ function previewValue(value: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function previewToolResult(toolName: string, value: unknown): string | undefined {
+  if (toolName !== 'read') return previewValue(value);
+  if (typeof value === 'string') return truncateText(value.trim(), 4000);
+  return previewValue(value);
 }
 
 function previewTextContent(value: Record<string, unknown>): string | undefined {
