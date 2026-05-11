@@ -1626,7 +1626,11 @@ function MarkdownText(props: { text: string }) {
         ol: ({ className, ...props }) => <ol className={cn('list-decimal space-y-1 pl-5', className)} {...props} />,
         p: ({ className, ...props }) => <p className={cn('whitespace-pre-wrap text-sm leading-6 text-foreground', className)} {...props} />,
         pre: ({ children }) => <>{children}</>,
-        table: ({ className, ...props }) => <table className={cn('w-full border-collapse text-sm', className)} {...props} />,
+        table: ({ className, ...props }) => (
+          <div className="my-3 max-w-full overflow-x-auto overscroll-x-contain touch-pan-x" data-markdown-table-wrapper="true">
+            <table className={cn('min-w-full w-max border-collapse text-sm', className)} {...props} />
+          </div>
+        ),
         tbody: ({ className, ...props }) => <tbody className={cn('divide-y divide-border', className)} {...props} />,
         td: ({ className, ...props }) => <td className={cn('border border-border px-2 py-1 align-top text-foreground', className)} {...props} />,
         th: ({ className, ...props }) => <th className={cn('border border-border px-2 py-1 text-left font-medium text-foreground', className)} {...props} />,
