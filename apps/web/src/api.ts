@@ -279,7 +279,8 @@ export async function streamGlobalEvents(input: {
   signal: AbortSignal;
   onEvent: (event: AgentEvent) => void;
 }): Promise<void> {
-  await streamEventResponse(`/events/stream?after=${input.after}&include=all&replay=false`, input);
+  const replay = input.after > 0 ? 'true' : 'false';
+  await streamEventResponse(`/events/stream?after=${input.after}&include=all&replay=${replay}`, input);
 }
 
 async function streamEventResponse(

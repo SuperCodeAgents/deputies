@@ -29,6 +29,7 @@ type MockApiOptions = {
   onReplayCallback?: (callbackId: string) => void;
   onStreamOpen?: (push: StreamEventPusher) => void;
   onGlobalStreamOpen?: (push: StreamEventPusher) => void;
+  onGlobalStreamRequest?: (url: URL) => void;
   onListSessions?: (count: number) => void;
   globalStreamStatus?: number;
   hangArchive?: boolean;
@@ -202,6 +203,39 @@ it('refreshes sessions when the global event stream reports an external session'
   });
 
   expect(await screen.findByText('Slack thread')).toBeInTheDocument();
+});
+
+it('keeps initial global event stream replay disabled to avoid loading old events', async () => {
+  let streamUrl: URL | undefined;
+  mockApi({
+    onGlobalStreamRequest: (url) => {
+      streamUrl = url;
+    },
+  });
+  render(<App />);
+
+  expect(await screen.findAllByText('Existing session')).not.toHaveLength(0);
+  await waitFor(() => expect(streamUrl).toBeDefined());
+
+  expect(streamUrl?.searchParams.get('include')).toBe('all');
+  expect(streamUrl?.searchParams.get('replay')).toBe('false');
+});
+
+it('refreshes sessions after returning from a hidden tab to catch phone updates', async () => {
+  const sessions = [{ ...session }];
+  mockApi({ sessions });
+  render(<App />);
+
+  expect(await screen.findByRole('heading', { name: 'Existing session' })).toBeInTheDocument();
+
+  setVisibilityState('hidden');
+  fireEvent(document, new Event('visibilitychange'));
+  sessions[0] = { ...session, status: 'archived' };
+
+  setVisibilityState('visible');
+  fireEvent(document, new Event('visibilitychange'));
+
+  expect(await screen.findByText('This session is archived.')).toBeInTheDocument();
 });
 
 it('coalesces rapid global session refresh events into one sessions request', async () => {
@@ -964,6 +998,7 @@ function mockApi(options: MockApiOptions = {}) {
     }
 
     if (url.pathname === '/events/stream') {
+      options.onGlobalStreamRequest?.(url);
       if (options.globalStreamStatus) return new Response(null, { status: options.globalStreamStatus });
       return new Response(new ReadableStream({
         start(controller) {

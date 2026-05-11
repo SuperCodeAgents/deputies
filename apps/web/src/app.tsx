@@ -231,6 +231,7 @@ export function App() {
   const eventCursor = useRef(0);
   const globalEventCursor = useRef(0);
   const lastBackgroundedAt = useRef<number | null>(null);
+  const wasPageHiddenRef = useRef(!isPageVisible());
   const wakeRecoveryActive = useRef(false);
   const appShellRef = useRef<HTMLElement | null>(null);
   const threadScrollRef = useRef<HTMLDivElement | null>(null);
@@ -382,6 +383,18 @@ export function App() {
     if (!canCallApi) return;
     refreshSessions();
   }, [canCallApi, token]);
+
+  useEffect(() => {
+    if (!pageVisible) {
+      wasPageHiddenRef.current = true;
+      return;
+    }
+    if (!wasPageHiddenRef.current || !canCallApi || !sessionsLoaded) return;
+
+    wasPageHiddenRef.current = false;
+    refreshSessions().catch(() => undefined);
+    if (selectedSessionId) refreshSessionDetail(selectedSessionId).catch(() => undefined);
+  }, [pageVisible, canCallApi, sessionsLoaded, selectedSessionId, token]);
 
   useEffect(() => {
     if (!selectedSessionId || !canCallApi) return;
