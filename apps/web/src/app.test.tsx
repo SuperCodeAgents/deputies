@@ -238,6 +238,26 @@ it('refreshes sessions after returning from a hidden tab to catch phone updates'
   expect(await screen.findByText('This session is archived.')).toBeInTheDocument();
 });
 
+it('refreshes sessions when a queued message starts processing', async () => {
+  const sessions = [{ ...session, status: 'queued' }];
+  let pushGlobalEvent: StreamEventPusher | undefined;
+  mockApi({
+    sessions,
+    onGlobalStreamOpen: (push) => {
+      pushGlobalEvent = push;
+    },
+  });
+  render(<App />);
+
+  expect(await screen.findAllByText('queued')).not.toHaveLength(0);
+  await waitFor(() => expect(pushGlobalEvent).toBeDefined());
+
+  sessions[0] = { ...session, status: 'active' };
+  pushGlobalEvent?.(eventFixture({ id: 2, sequence: 1, type: 'message_started', payload: { sequences: [1], batchSize: 1 } }));
+
+  expect(await screen.findAllByText('active')).not.toHaveLength(0);
+});
+
 it('coalesces rapid global session refresh events into one sessions request', async () => {
   const sessions = [session];
   let sessionsRequestCount = 0;

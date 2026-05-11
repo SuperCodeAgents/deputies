@@ -47,6 +47,8 @@ const themeStorageKey = 'deputies-theme';
 const threadAutoFollowThreshold = 160;
 const startupConnectionDelayMs = 3_000;
 const wakeRecoveryThresholdMs = 5_000;
+const realtimeReconnectInitialDelayMs = 500;
+const realtimeReconnectMaxDelayMs = 5_000;
 const liveConnectionMessage = 'Live updates connected.';
 const wakeRecoveryMessage = 'Reconnecting after your computer was asleep or offline.';
 type ThemePreference = 'light' | 'dark' | 'system';
@@ -407,30 +409,44 @@ export function App() {
     if (!pageVisible || !canCallApi || !sessionsLoaded) return;
 
     const abort = new AbortController();
-    streamGlobalEvents({
-      after: globalEventCursor.current,
-      token,
-      signal: abort.signal,
-      onEvent: (event) => {
-        if (typeof event.id === 'number') globalEventCursor.current = Math.max(globalEventCursor.current, event.id);
+    let reconnectDelayMs = realtimeReconnectInitialDelayMs;
 
-        const activeSessionId = selectedSessionIdRef.current;
-        if (event.sessionId === activeSessionId && detailLoadedSessionIdRef.current === activeSessionId) {
-          eventCursor.current = Math.max(eventCursor.current, event.sequence);
-          setEvents((current) => upsertEvent(current, event));
-          if (shouldRefreshSessionDetail(event.type)) {
-            refreshMessagesArtifactsAndCallbacks(activeSessionId).catch(() => undefined);
-          }
+    const runStreamLoop = async () => {
+      while (!abort.signal.aborted) {
+        try {
+          await streamGlobalEvents({
+            after: globalEventCursor.current,
+            token,
+            signal: abort.signal,
+            onEvent: (event) => {
+              reconnectDelayMs = realtimeReconnectInitialDelayMs;
+              if (typeof event.id === 'number') globalEventCursor.current = Math.max(globalEventCursor.current, event.id);
+
+              const activeSessionId = selectedSessionIdRef.current;
+              if (event.sessionId === activeSessionId && detailLoadedSessionIdRef.current === activeSessionId) {
+                eventCursor.current = Math.max(eventCursor.current, event.sequence);
+                setEvents((current) => upsertEvent(current, event));
+                if (shouldRefreshSessionDetail(event.type)) {
+                  refreshMessagesArtifactsAndCallbacks(activeSessionId).catch(() => undefined);
+                }
+              }
+
+              if (shouldRefreshSessions(event.type)) scheduleSessionsRefresh();
+            },
+          });
+        } catch (err: unknown) {
+          if (abort.signal.aborted) break;
+          scheduleSessionsRefresh(0);
+          setConnectionStatus({ state: 'reconnecting', message: errorMessage(err) });
         }
 
-        if (shouldRefreshSessions(event.type)) scheduleSessionsRefresh();
-      },
-    }).catch((err: unknown) => {
-      if (!abort.signal.aborted) {
-        scheduleSessionsRefresh(0);
-        setConnectionStatus({ state: 'reconnecting', message: errorMessage(err) });
+        if (abort.signal.aborted) break;
+        await waitForRealtimeReconnect(reconnectDelayMs, abort.signal);
+        reconnectDelayMs = Math.min(reconnectDelayMs * 2, realtimeReconnectMaxDelayMs);
       }
-    });
+    };
+
+    runStreamLoop().catch(() => undefined);
 
     return () => {
       abort.abort();
@@ -1098,7 +1114,18 @@ function shouldRefreshSessionDetail(eventType: string): boolean {
 }
 
 function shouldRefreshSessions(eventType: string): boolean {
-  return new Set(['session_created', 'session_updated', 'session_archived', 'session_unarchived', 'session_queue_paused', 'session_queue_resumed', 'message_created', 'message_completed', 'message_failed', 'message_cancelled', 'run_failed', 'run_cancelled']).has(eventType);
+  return new Set(['session_created', 'session_updated', 'session_archived', 'session_unarchived', 'session_queue_paused', 'session_queue_resumed', 'message_created', 'message_started', 'message_completed', 'message_failed', 'message_cancelled', 'run_failed', 'run_cancelled']).has(eventType);
+}
+
+function waitForRealtimeReconnect(delayMs: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timeout = window.setTimeout(resolve, delayMs);
+    signal.addEventListener('abort', () => {
+      window.clearTimeout(timeout);
+      resolve();
+    }, { once: true });
+  });
 }
 
 function repositoryLabel(value: unknown): string | null {
