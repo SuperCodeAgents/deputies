@@ -237,6 +237,14 @@ describe('WorkerService', () => {
               status: 'Working on your request...',
             });
           },
+          async onRunCompleted({ message }) {
+            const callback = message.context?.callback as { channel: string; threadTs: string };
+            progress.push({
+              channel: callback.channel,
+              threadTs: callback.threadTs,
+              status: 'completed',
+            });
+          },
         },
       ],
     });
@@ -247,6 +255,7 @@ describe('WorkerService', () => {
     expect(replies).toEqual([{ channel: 'C123', threadTs: '1710000000.000100', text: 'final deputy reply' }]);
     expect(progress).toEqual([
       { channel: 'C123', threadTs: '1710000000.000100', status: 'Working on your request...' },
+      { channel: 'C123', threadTs: '1710000000.000100', status: 'completed' },
     ]);
     const events = await services.events.list(session.id);
     expect(events.map((event) => event.type)).toContain('callback_sent');
@@ -352,6 +361,9 @@ describe('WorkerService', () => {
         {
           async onRunStarted() {
             progress.push('started');
+          },
+          async onRunCompleted() {
+            progress.push('completed');
           },
           async onRunCancelled() {
             progress.push('cancelled');

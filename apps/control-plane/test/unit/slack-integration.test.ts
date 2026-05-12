@@ -111,9 +111,14 @@ describe('Slack integration', () => {
   it('clears Slack status and posts a cancellation reply when runs are cancelled', async () => {
     const statuses: Array<{ channel: string; threadTs: string; status: string }> = [];
     const replies: Array<{ channel: string; threadTs: string; text: string; blocks?: unknown[] }> = [];
+    const removedReactions: Array<{ channel: string; ts: string; name: string }> = [];
     const notifier = new SlackRunProgressNotifier({
       async setThreadStatus(input) {
         statuses.push(input);
+        return { ok: true };
+      },
+      async removeReaction(input) {
+        removedReactions.push(input);
         return { ok: true };
       },
       async postThreadReply(input) {
@@ -140,12 +145,22 @@ describe('Slack integration', () => {
         status: 'cancelled',
         prompt: 'from slack',
         source: 'slack',
-        context: { callback: { type: 'slack', channel: 'C123', threadTs: '1710000000.000100' } },
+        context: {
+          callback: {
+            type: 'slack',
+            channel: 'C123',
+            threadTs: '1710000000.000100',
+            messageTs: '1710000001.000100',
+          },
+        },
         createdAt: new Date(),
       },
     });
 
     expect(statuses).toEqual([{ channel: 'C123', threadTs: '1710000000.000100', status: '' }]);
+    expect(removedReactions).toEqual([
+      { channel: 'C123', ts: '1710000001.000100', name: 'hourglass_flowing_sand' },
+    ]);
     expect(replies).toEqual([
       {
         channel: 'C123',
@@ -158,11 +173,75 @@ describe('Slack integration', () => {
     ]);
   });
 
+  it('uses Slack reactions for run progress', async () => {
+    const statuses: Array<{ channel: string; threadTs: string; status: string }> = [];
+    const addedReactions: Array<{ channel: string; ts: string; name: string }> = [];
+    const removedReactions: Array<{ channel: string; ts: string; name: string }> = [];
+    const notifier = new SlackRunProgressNotifier({
+      async setThreadStatus(input) {
+        statuses.push(input);
+        return { ok: true };
+      },
+      async addReaction(input) {
+        addedReactions.push(input);
+        return { ok: true };
+      },
+      async removeReaction(input) {
+        removedReactions.push(input);
+        return { ok: true };
+      },
+    });
+    const input = {
+      run: {
+        id: 'run-1',
+        sessionId: 'session-1',
+        messageId: 'message-1',
+        status: 'running' as const,
+        runnerType: 'fake',
+        attempt: 1,
+        startedAt: new Date(),
+        metadata: {},
+      },
+      message: {
+        id: 'message-1',
+        sessionId: 'session-1',
+        sequence: 1,
+        status: 'processing' as const,
+        prompt: 'from slack',
+        source: 'slack',
+        context: {
+          callback: {
+            type: 'slack',
+            channel: 'C123',
+            threadTs: '1710000000.000100',
+            messageTs: '1710000001.000100',
+          },
+        },
+        createdAt: new Date(),
+      },
+    };
+
+    await notifier.onRunStarted?.(input);
+    await notifier.onRunCompleted?.({ ...input, run: { ...input.run, status: 'completed' } });
+
+    expect(statuses).toEqual([
+      { channel: 'C123', threadTs: '1710000000.000100', status: 'Working on your request...' },
+    ]);
+    expect(addedReactions).toEqual([
+      { channel: 'C123', ts: '1710000001.000100', name: 'hourglass_flowing_sand' },
+      { channel: 'C123', ts: '1710000001.000100', name: 'white_check_mark' },
+    ]);
+    expect(removedReactions).toEqual([
+      { channel: 'C123', ts: '1710000001.000100', name: 'hourglass_flowing_sand' },
+    ]);
+  });
+
   it('creates sessions from app mentions and reuses Slack threads for follow-ups', async () => {
     const store = new MemoryStore();
     const services = createServices(store);
     const statuses: Array<{ channel: string; threadTs: string; status: string }> = [];
     const replies: Array<{ channel: string; threadTs: string; text: string; blocks?: unknown[] }> = [];
+    const reactions: Array<{ channel: string; ts: string; name: string }> = [];
     const slack = new SlackIntegrationService(store, services.sessions, services.messages, {
       assistantThreadClient: {
         async setThreadStatus(input) {
@@ -173,6 +252,15 @@ describe('Slack integration', () => {
       replyClient: {
         async postThreadReply(input) {
           replies.push(input);
+          return { ok: true };
+        },
+      },
+      reactionClient: {
+        async addReaction(input) {
+          reactions.push(input);
+          return { ok: true };
+        },
+        async removeReaction() {
           return { ok: true };
         },
       },
@@ -251,6 +339,10 @@ describe('Slack integration', () => {
     expect(statuses).toEqual([
       { channel: 'C123', threadTs: '1710000000.000100', status: 'Queued your request...' },
       { channel: 'C123', threadTs: '1710000000.000100', status: 'Queued your request...' },
+    ]);
+    expect(reactions).toEqual([
+      { channel: 'C123', ts: '1710000000.000100', name: 'eyes' },
+      { channel: 'C123', ts: '1710000001.000100', name: 'eyes' },
     ]);
   });
 

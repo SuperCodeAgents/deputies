@@ -17,6 +17,11 @@ export type SlackAssistantThreadClient = {
   }): Promise<{ ok: boolean; error?: string }>;
 };
 
+export type SlackReactionClient = {
+  addReaction(input: { channel: string; ts: string; name: string }): Promise<{ ok: boolean; error?: string }>;
+  removeReaction(input: { channel: string; ts: string; name: string }): Promise<{ ok: boolean; error?: string }>;
+};
+
 export type SlackThreadClient = {
   getThreadReplies(input: { channel: string; threadTs: string }): Promise<{
     ok: boolean;
@@ -38,7 +43,9 @@ export type SlackInfoClient = {
   }>;
 };
 
-export class SlackClient implements SlackReplyClient, SlackThreadClient, SlackInfoClient, SlackAssistantThreadClient {
+export class SlackClient
+  implements SlackReplyClient, SlackThreadClient, SlackInfoClient, SlackAssistantThreadClient, SlackReactionClient
+{
   constructor(private readonly options: { apiBaseUrl: string; botToken?: string }) {}
 
   async postThreadReply(input: {
@@ -77,6 +84,32 @@ export class SlackClient implements SlackReplyClient, SlackThreadClient, SlackIn
         'content-type': 'application/json',
       },
       body: JSON.stringify({ channel_id: input.channel, thread_ts: input.threadTs, status: input.status }),
+    });
+    return (await response.json()) as { ok: boolean; error?: string };
+  }
+
+  async addReaction(input: { channel: string; ts: string; name: string }): Promise<{ ok: boolean; error?: string }> {
+    if (!this.options.botToken) throw new Error('SLACK_BOT_TOKEN is required to add Slack reactions');
+    const response = await fetch(`${this.options.apiBaseUrl.replace(/\/$/, '')}/reactions.add`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${this.options.botToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ channel: input.channel, timestamp: input.ts, name: input.name }),
+    });
+    return (await response.json()) as { ok: boolean; error?: string };
+  }
+
+  async removeReaction(input: { channel: string; ts: string; name: string }): Promise<{ ok: boolean; error?: string }> {
+    if (!this.options.botToken) throw new Error('SLACK_BOT_TOKEN is required to remove Slack reactions');
+    const response = await fetch(`${this.options.apiBaseUrl.replace(/\/$/, '')}/reactions.remove`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${this.options.botToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ channel: input.channel, timestamp: input.ts, name: input.name }),
     });
     return (await response.json()) as { ok: boolean; error?: string };
   }

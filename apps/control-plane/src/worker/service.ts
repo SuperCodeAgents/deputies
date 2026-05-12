@@ -26,6 +26,7 @@ type WorkerStore = RunStore &
 
 export type RunProgressNotifier = {
   onRunStarted?(input: { message: MessageRecord; run: RunRecord }): Promise<void>;
+  onRunCompleted?(input: { message: MessageRecord; run: RunRecord }): Promise<void>;
   onRunCancelled?(input: { message: MessageRecord; run: RunRecord }): Promise<void>;
 };
 
@@ -93,6 +94,7 @@ export class WorkerService {
           payload: { sequence: message.sequence },
         });
       }
+      await this.notifyRunCompleted(completed.messages[0]!, completed.run);
     } catch (error) {
       if (await this.finalizeCancellationIfRequested(claimed.run.id)) return true;
       const message = error instanceof Error ? error.message : 'Unknown worker error';
@@ -308,6 +310,16 @@ export class WorkerService {
     for (const notifier of this.options.progressNotifiers ?? []) {
       try {
         await notifier.onRunStarted?.({ message, run });
+      } catch (error) {
+        console.warn(error instanceof Error ? error.message : error);
+      }
+    }
+  }
+
+  private async notifyRunCompleted(message: MessageRecord, run: RunRecord): Promise<void> {
+    for (const notifier of this.options.progressNotifiers ?? []) {
+      try {
+        await notifier.onRunCompleted?.({ message, run });
       } catch (error) {
         console.warn(error instanceof Error ? error.message : error);
       }

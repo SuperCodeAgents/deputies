@@ -19,13 +19,20 @@ import {
   receiveIntegrationDelivery,
 } from '../shared-utils.js';
 import { slackCallbackTarget } from './callback-target.js';
-import type { SlackAssistantThreadClient, SlackInfoClient, SlackReplyClient, SlackThreadClient } from './client.js';
+import type {
+  SlackAssistantThreadClient,
+  SlackInfoClient,
+  SlackReactionClient,
+  SlackReplyClient,
+  SlackThreadClient,
+} from './client.js';
 import { renderSlackPrompt, slackSessionTitle, type SlackThreadContext } from './prompts.js';
 import type { SlackAcceptedEvent, SlackEventEnvelope, SlackPromptMetadata, SlackThreadMessage } from './types.js';
 
 export type SlackIntegrationOptions = {
   assistantThreadClient?: SlackAssistantThreadClient;
   replyClient?: SlackReplyClient;
+  reactionClient?: SlackReactionClient;
   threadClient?: SlackThreadClient;
   infoClient?: SlackInfoClient;
   allowedTeamIds?: string[];
@@ -121,6 +128,7 @@ export class SlackIntegrationService {
     const existingMessageCount = (await this.store.getMessages(session.id)).length;
     if (existingMessageCount === 0) await this.postSessionLink(accepted, session.id);
 
+    await this.addReaction(accepted, 'eyes');
     await this.setThreadStatus(accepted, 'Queued your request...');
     const threadContext =
       accepted.type === 'app_mention' ? await this.fetchThreadContext(session, accepted) : { messages: [] };
@@ -167,6 +175,18 @@ export class SlackIntegrationService {
       });
       if (!response.ok) {
         console.warn(`Slack assistant thread status failed: ${response.error ?? 'unknown_error'}`);
+      }
+    } catch (error) {
+      console.warn(error instanceof Error ? error.message : error);
+    }
+  }
+
+  private async addReaction(event: SlackAcceptedEvent, name: string): Promise<void> {
+    if (!this.options.reactionClient) return;
+    try {
+      const response = await this.options.reactionClient.addReaction({ channel: event.channel, ts: event.ts, name });
+      if (!response.ok && response.error !== 'already_reacted') {
+        console.warn(`Slack reaction add failed: ${response.error ?? 'unknown_error'}`);
       }
     } catch (error) {
       console.warn(error instanceof Error ? error.message : error);
