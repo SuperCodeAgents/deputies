@@ -339,6 +339,38 @@ describe('WorkerService', () => {
     ]);
   });
 
+  it('notifies progress listeners when runs fail', async () => {
+    const store = new MemoryStore();
+    const services = createServices(store);
+    const session = await services.sessions.create({ title: 'Failed run progress' });
+    await services.messages.enqueue({ sessionId: session.id, prompt: 'fail' });
+    const progress: string[] = [];
+
+    const worker = new WorkerService({
+      store,
+      events: services.events,
+      runner: new FailingRunner('runner exploded'),
+      runnerType: 'failing',
+      sandboxProvider: new FakeSandboxProvider(),
+      leaseOwner: 'test-worker',
+      progressNotifiers: [
+        {
+          async onRunStarted() {
+            progress.push('started');
+          },
+          async onRunFailed({ error }) {
+            progress.push(`failed:${error}`);
+          },
+        },
+      ],
+    });
+
+    await expect(worker.processNext()).resolves.toBe(true);
+
+    expect(progress).toEqual(['started', 'failed:runner exploded']);
+    await expect(services.messages.list(session.id)).resolves.toMatchObject([{ status: 'failed' }]);
+  });
+
   it('does not complete a run that was cancelled while the runner was active', async () => {
     const store = new MemoryStore();
     const services = createServices(store);
@@ -655,6 +687,14 @@ class TextRunner implements Runner {
       createdAt: new Date(),
     });
     return { text: this.text };
+  }
+}
+
+class FailingRunner implements Runner {
+  constructor(private readonly message: string) {}
+
+  async run(): Promise<RunnerResult> {
+    throw new Error(this.message);
   }
 }
 

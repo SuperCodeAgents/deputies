@@ -14,9 +14,16 @@ export class SlackRunProgressNotifier implements RunProgressNotifier {
     await this.addReaction(input.message, 'white_check_mark');
   }
 
+  async onRunFailed(input: Parameters<NonNullable<RunProgressNotifier['onRunFailed']>>[0]): Promise<void> {
+    await this.removeReaction(input.message, 'hourglass_flowing_sand');
+    await this.addReaction(input.message, 'x');
+    await this.postFailureReply(input.message);
+  }
+
   async onRunCancelled(input: Parameters<NonNullable<RunProgressNotifier['onRunCancelled']>>[0]): Promise<void> {
     await this.setSlackThreadStatus(input.message, '');
     await this.removeReaction(input.message, 'hourglass_flowing_sand');
+    await this.addReaction(input.message, 'x');
     await this.postCancellationReply(input.message);
   }
 
@@ -65,23 +72,28 @@ export class SlackRunProgressNotifier implements RunProgressNotifier {
   private async postCancellationReply(
     message: Parameters<NonNullable<RunProgressNotifier['onRunStarted']>>[0]['message'],
   ): Promise<void> {
-    if (!this.client.postThreadReply) return;
-    const callback = message.context?.callback;
-    if (!callback || typeof callback !== 'object' || Array.isArray(callback)) return;
-    const type = 'type' in callback ? callback.type : undefined;
-    const channel = 'channel' in callback ? callback.channel : undefined;
-    const threadTs = 'threadTs' in callback ? callback.threadTs : undefined;
-    if (type !== 'slack' || typeof channel !== 'string' || !channel || typeof threadTs !== 'string' || !threadTs)
-      return;
+    await this.postThreadReply(message, ':no_entry: Execution was cancelled.');
+  }
 
-    const text = ':no_entry: Execution was cancelled.';
+  private async postFailureReply(
+    message: Parameters<NonNullable<RunProgressNotifier['onRunStarted']>>[0]['message'],
+  ): Promise<void> {
+    await this.postThreadReply(message, ':x: Execution failed.');
+  }
+
+  private async postThreadReply(
+    message: Parameters<NonNullable<RunProgressNotifier['onRunStarted']>>[0]['message'],
+    text: string,
+  ): Promise<void> {
+    if (!this.client.postThreadReply) return;
+    const target = threadTarget(message);
+    if (!target) return;
     const response = await this.client.postThreadReply({
-      channel,
-      threadTs,
+      ...target,
       text,
       blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }],
     });
-    if (!response.ok) throw new Error(`Slack cancellation reply failed${response.error ? `: ${response.error}` : ''}`);
+    if (!response.ok) throw new Error(`Slack reply failed${response.error ? `: ${response.error}` : ''}`);
   }
 }
 
@@ -96,4 +108,17 @@ function reactionTarget(
   if (type !== 'slack' || typeof channel !== 'string' || !channel || typeof messageTs !== 'string' || !messageTs)
     return null;
   return { channel, ts: messageTs };
+}
+
+function threadTarget(
+  message: Parameters<NonNullable<RunProgressNotifier['onRunStarted']>>[0]['message'],
+): { channel: string; threadTs: string } | null {
+  const callback = message.context?.callback;
+  if (!callback || typeof callback !== 'object' || Array.isArray(callback)) return null;
+  const type = 'type' in callback ? callback.type : undefined;
+  const channel = 'channel' in callback ? callback.channel : undefined;
+  const threadTs = 'threadTs' in callback ? callback.threadTs : undefined;
+  if (type !== 'slack' || typeof channel !== 'string' || !channel || typeof threadTs !== 'string' || !threadTs)
+    return null;
+  return { channel, threadTs };
 }

@@ -108,13 +108,18 @@ describe('Slack integration', () => {
     ]);
   });
 
-  it('clears Slack status and posts a cancellation reply when runs are cancelled', async () => {
+  it('clears Slack status, marks failure, and posts a cancellation reply when runs are cancelled', async () => {
     const statuses: Array<{ channel: string; threadTs: string; status: string }> = [];
     const replies: Array<{ channel: string; threadTs: string; text: string; blocks?: unknown[] }> = [];
+    const addedReactions: Array<{ channel: string; ts: string; name: string }> = [];
     const removedReactions: Array<{ channel: string; ts: string; name: string }> = [];
     const notifier = new SlackRunProgressNotifier({
       async setThreadStatus(input) {
         statuses.push(input);
+        return { ok: true };
+      },
+      async addReaction(input) {
+        addedReactions.push(input);
         return { ok: true };
       },
       async removeReaction(input) {
@@ -161,6 +166,7 @@ describe('Slack integration', () => {
     expect(removedReactions).toEqual([
       { channel: 'C123', ts: '1710000001.000100', name: 'hourglass_flowing_sand' },
     ]);
+    expect(addedReactions).toEqual([{ channel: 'C123', ts: '1710000001.000100', name: 'x' }]);
     expect(replies).toEqual([
       {
         channel: 'C123',
@@ -169,6 +175,73 @@ describe('Slack integration', () => {
         blocks: [
           { type: 'section', text: { type: 'mrkdwn', text: ':no_entry: Execution was cancelled.' } },
         ],
+      },
+    ]);
+  });
+
+  it('marks Slack run failures and posts a failure reply', async () => {
+    const replies: Array<{ channel: string; threadTs: string; text: string; blocks?: unknown[] }> = [];
+    const addedReactions: Array<{ channel: string; ts: string; name: string }> = [];
+    const removedReactions: Array<{ channel: string; ts: string; name: string }> = [];
+    const notifier = new SlackRunProgressNotifier({
+      async setThreadStatus() {
+        return { ok: true };
+      },
+      async addReaction(input) {
+        addedReactions.push(input);
+        return { ok: true };
+      },
+      async removeReaction(input) {
+        removedReactions.push(input);
+        return { ok: true };
+      },
+      async postThreadReply(input) {
+        replies.push(input);
+        return { ok: true };
+      },
+    });
+
+    await notifier.onRunFailed?.({
+      error: 'boom',
+      run: {
+        id: 'run-1',
+        sessionId: 'session-1',
+        messageId: 'message-1',
+        status: 'failed',
+        runnerType: 'fake',
+        attempt: 1,
+        startedAt: new Date(),
+        metadata: {},
+      },
+      message: {
+        id: 'message-1',
+        sessionId: 'session-1',
+        sequence: 1,
+        status: 'failed',
+        prompt: 'from slack',
+        source: 'slack',
+        context: {
+          callback: {
+            type: 'slack',
+            channel: 'C123',
+            threadTs: '1710000000.000100',
+            messageTs: '1710000001.000100',
+          },
+        },
+        createdAt: new Date(),
+      },
+    });
+
+    expect(removedReactions).toEqual([
+      { channel: 'C123', ts: '1710000001.000100', name: 'hourglass_flowing_sand' },
+    ]);
+    expect(addedReactions).toEqual([{ channel: 'C123', ts: '1710000001.000100', name: 'x' }]);
+    expect(replies).toEqual([
+      {
+        channel: 'C123',
+        threadTs: '1710000000.000100',
+        text: ':x: Execution failed.',
+        blocks: [{ type: 'section', text: { type: 'mrkdwn', text: ':x: Execution failed.' } }],
       },
     ]);
   });
