@@ -3,14 +3,14 @@ import type {
   CompletionCallbackPayload,
   CompletionCallbackSender,
 } from '../../callbacks/service.js';
-import type { SlackBlock, SlackReactionClient, SlackReplyClient } from './client.js';
+import type { SlackAssistantThreadClient, SlackBlock, SlackReplyClient } from './client.js';
 
 const maxSlackMrkdwnCharacters = 3000;
 
 export class SlackCompletionCallbackSender implements CompletionCallbackSender {
   readonly type = 'slack';
 
-  constructor(private readonly client: SlackReplyClient & Partial<SlackReactionClient>) {}
+  constructor(private readonly client: SlackReplyClient & Partial<SlackAssistantThreadClient>) {}
 
   async deliver(callback: CompletionCallback, payload: CompletionCallbackPayload): Promise<void> {
     const channel = callback.target.channel;
@@ -20,18 +20,23 @@ export class SlackCompletionCallbackSender implements CompletionCallbackSender {
     }
     const text = payload.text.trim() || 'Completed.';
     const blocks = slackReplyBlocks(text, callback.target);
-    const response = await this.client.postThreadReply({
-      channel,
-      threadTs,
-      text: appendSlackFooter(text, callback.target),
-      ...(blocks.length ? { blocks } : {}),
-    });
-    if (!response.ok) throw new Error(`Slack callback failed${response.error ? `: ${response.error}` : ''}`);
-    const messageTs = callback.target.messageTs;
-    if (typeof messageTs === 'string' && messageTs && this.client.addReaction) {
-      const reaction = await this.client.addReaction({ channel, timestamp: messageTs, name: 'white_check_mark' });
-      if (!reaction.ok && reaction.error !== 'already_reacted')
-        throw new Error(`Slack completion reaction failed${reaction.error ? `: ${reaction.error}` : ''}`);
+    try {
+      const response = await this.client.postThreadReply({
+        channel,
+        threadTs,
+        text: appendSlackFooter(text, callback.target),
+        ...(blocks.length ? { blocks } : {}),
+      });
+      if (!response.ok) throw new Error(`Slack callback failed${response.error ? `: ${response.error}` : ''}`);
+    } finally {
+      if (this.client.setThreadStatus) {
+        try {
+          const status = await this.client.setThreadStatus({ channel, threadTs, status: '' });
+          if (!status.ok) console.warn(`Slack status clear failed${status.error ? `: ${status.error}` : ''}`);
+        } catch (error) {
+          console.warn(error instanceof Error ? error.message : error);
+        }
+      }
     }
   }
 }

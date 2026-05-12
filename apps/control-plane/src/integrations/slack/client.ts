@@ -9,8 +9,8 @@ export type SlackReplyClient = {
   }): Promise<{ ok: boolean; ts?: string; error?: string }>;
 };
 
-export type SlackReactionClient = {
-  addReaction(input: { channel: string; timestamp: string; name: string }): Promise<{ ok: boolean; error?: string }>;
+export type SlackAssistantThreadClient = {
+  setThreadStatus(input: { channel: string; threadTs: string; status: string }): Promise<{ ok: boolean; error?: string }>;
 };
 
 export type SlackThreadClient = {
@@ -34,7 +34,7 @@ export type SlackInfoClient = {
   }>;
 };
 
-export class SlackClient implements SlackReplyClient, SlackReactionClient, SlackThreadClient, SlackInfoClient {
+export class SlackClient implements SlackReplyClient, SlackThreadClient, SlackInfoClient, SlackAssistantThreadClient {
   constructor(private readonly options: { apiBaseUrl: string; botToken?: string }) {}
 
   async postThreadReply(input: {
@@ -60,19 +60,19 @@ export class SlackClient implements SlackReplyClient, SlackReactionClient, Slack
     return (await response.json()) as { ok: boolean; ts?: string; error?: string };
   }
 
-  async addReaction(input: {
+  async setThreadStatus(input: {
     channel: string;
-    timestamp: string;
-    name: string;
+    threadTs: string;
+    status: string;
   }): Promise<{ ok: boolean; error?: string }> {
-    if (!this.options.botToken) throw new Error('SLACK_BOT_TOKEN is required to add Slack reactions');
-    const response = await fetch(`${this.options.apiBaseUrl.replace(/\/$/, '')}/reactions.add`, {
+    if (!this.options.botToken) throw new Error('SLACK_BOT_TOKEN is required to set Slack assistant thread status');
+    const response = await fetch(`${this.options.apiBaseUrl.replace(/\/$/, '')}/assistant.threads.setStatus`, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${this.options.botToken}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ channel: input.channel, timestamp: input.timestamp, name: input.name }),
+      body: JSON.stringify({ channel_id: input.channel, thread_ts: input.threadTs, status: input.status }),
     });
     return (await response.json()) as { ok: boolean; error?: string };
   }

@@ -19,16 +19,15 @@ import {
   receiveIntegrationDelivery,
 } from '../shared-utils.js';
 import { slackCallbackTarget } from './callback-target.js';
-import type { SlackInfoClient, SlackReactionClient, SlackReplyClient, SlackThreadClient } from './client.js';
+import type { SlackAssistantThreadClient, SlackInfoClient, SlackReplyClient, SlackThreadClient } from './client.js';
 import { renderSlackPrompt, slackSessionTitle, type SlackThreadContext } from './prompts.js';
 import type { SlackAcceptedEvent, SlackEventEnvelope, SlackPromptMetadata, SlackThreadMessage } from './types.js';
 
 export type SlackIntegrationOptions = {
-  reactionClient?: SlackReactionClient;
+  assistantThreadClient?: SlackAssistantThreadClient;
   replyClient?: SlackReplyClient;
   threadClient?: SlackThreadClient;
   infoClient?: SlackInfoClient;
-  receivedReactionName?: string;
   allowedTeamIds?: string[];
   allowedChannelIds?: string[];
   allowedUserIds?: string[];
@@ -119,7 +118,7 @@ export class SlackIntegrationService {
       }
     }
 
-    await this.addReceivedReaction(accepted);
+    await this.setThreadStatus(accepted, 'Queued your request...');
     const threadContext =
       accepted.type === 'app_mention' ? await this.fetchThreadContext(session, accepted) : { messages: [] };
     const promptThreadContext = { ...threadContext, messages: boundPriorContext(threadContext.messages) };
@@ -156,16 +155,16 @@ export class SlackIntegrationService {
     return { ok: true, type: 'accepted', session, message };
   }
 
-  private async addReceivedReaction(event: SlackAcceptedEvent): Promise<void> {
-    if (!this.options.reactionClient) return;
+  private async setThreadStatus(event: SlackAcceptedEvent, status: string): Promise<void> {
+    if (!this.options.assistantThreadClient) return;
     try {
-      const response = await this.options.reactionClient.addReaction({
+      const response = await this.options.assistantThreadClient.setThreadStatus({
         channel: event.channel,
-        timestamp: event.ts,
-        name: this.options.receivedReactionName ?? 'eyes',
+        threadTs: event.threadTs,
+        status,
       });
-      if (!response.ok && response.error !== 'already_reacted') {
-        console.warn(`Slack reaction failed: ${response.error ?? 'unknown_error'}`);
+      if (!response.ok) {
+        console.warn(`Slack assistant thread status failed: ${response.error ?? 'unknown_error'}`);
       }
     } catch (error) {
       console.warn(error instanceof Error ? error.message : error);

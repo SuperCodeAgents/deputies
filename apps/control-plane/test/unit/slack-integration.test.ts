@@ -110,11 +110,11 @@ describe('Slack integration', () => {
   it('creates sessions from app mentions and reuses Slack threads for follow-ups', async () => {
     const store = new MemoryStore();
     const services = createServices(store);
-    const reactions: Array<{ channel: string; timestamp: string; name: string }> = [];
+    const statuses: Array<{ channel: string; threadTs: string; status: string }> = [];
     const slack = new SlackIntegrationService(store, services.sessions, services.messages, {
-      reactionClient: {
-        async addReaction(input) {
-          reactions.push(input);
+      assistantThreadClient: {
+        async setThreadStatus(input) {
+          statuses.push(input);
           return { ok: true };
         },
       },
@@ -160,9 +160,9 @@ describe('Slack integration', () => {
       messageTs: '1710000000.000100',
       replyHint: 'Tag @deputies in replies to continue here.',
     });
-    expect(reactions).toEqual([
-      { channel: 'C123', timestamp: '1710000000.000100', name: 'eyes' },
-      { channel: 'C123', timestamp: '1710000001.000100', name: 'eyes' },
+    expect(statuses).toEqual([
+      { channel: 'C123', threadTs: '1710000000.000100', status: 'Queued your request...' },
+      { channel: 'C123', threadTs: '1710000000.000100', status: 'Queued your request...' },
     ]);
   });
 
@@ -185,12 +185,12 @@ describe('Slack integration', () => {
     expect(await store.listSessions()).toHaveLength(0);
   });
 
-  it('does not fail accepted Slack events when adding the received reaction fails', async () => {
+  it('does not fail accepted Slack events when setting assistant thread status fails', async () => {
     const store = new MemoryStore();
     const services = createServices(store);
     const slack = new SlackIntegrationService(store, services.sessions, services.messages, {
-      reactionClient: {
-        async addReaction() {
+      assistantThreadClient: {
+        async setThreadStatus() {
           return { ok: false, error: 'missing_scope' };
         },
       },
@@ -706,12 +706,12 @@ describe('Slack integration', () => {
   it('ignores Slack thread replies mapped to archived sessions', async () => {
     const store = new MemoryStore();
     const services = createServices(store);
-    const reactions: Array<{ channel: string; timestamp: string; name: string }> = [];
+    const statuses: Array<{ channel: string; threadTs: string; status: string }> = [];
     const replies: Array<{ channel: string; threadTs: string; text: string }> = [];
     const slack = new SlackIntegrationService(store, services.sessions, services.messages, {
-      reactionClient: {
-        async addReaction(input) {
-          reactions.push(input);
+      assistantThreadClient: {
+        async setThreadStatus(input) {
+          statuses.push(input);
           return { ok: true };
         },
       },
@@ -751,7 +751,7 @@ describe('Slack integration', () => {
       status: 'cancelled',
       prompt: expect.stringContaining('unarchive and proceed'),
     });
-    expect(reactions).toEqual([{ channel: 'C123', timestamp: '1710000000.000100', name: 'eyes' }]);
+    expect(statuses).toEqual([{ channel: 'C123', threadTs: '1710000000.000100', status: 'Queued your request...' }]);
     expect(replies).toEqual([
       { channel: 'C123', threadTs: '1710000000.000100', text: expect.stringContaining('unarchive and proceed') },
     ]);

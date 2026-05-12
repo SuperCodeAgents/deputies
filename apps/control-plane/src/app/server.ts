@@ -296,7 +296,7 @@ export function createApp(config: AppConfig, services = createServices()) {
         : null;
       const slackOptions = config.slackBotToken
         ? {
-            reactionClient: slackClient!,
+            assistantThreadClient: slackClient!,
             replyClient: slackClient!,
             threadClient: slackClient!,
             infoClient: slackClient!,

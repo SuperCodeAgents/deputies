@@ -170,7 +170,7 @@ describe('WorkerService', () => {
     const services = createServices(store);
     const session = await services.sessions.create({ title: 'Slack callback' });
     const replies: Array<{ channel: string; threadTs: string; text: string }> = [];
-    const progress: Array<{ channel: string; timestamp: string; name: string }> = [];
+    const progress: Array<{ channel: string; threadTs: string; status: string }> = [];
     await services.messages.enqueue({
       sessionId: session.id,
       prompt: 'from slack',
@@ -202,8 +202,8 @@ describe('WorkerService', () => {
       progressNotifiers: [
         {
           async onRunStarted({ message }) {
-            const callback = message.context?.callback as { channel: string; messageTs: string };
-            progress.push({ channel: callback.channel, timestamp: callback.messageTs, name: 'hourglass_flowing_sand' });
+            const callback = message.context?.callback as { channel: string; threadTs: string };
+            progress.push({ channel: callback.channel, threadTs: callback.threadTs, status: 'Working on your request...' });
           },
         },
       ],
@@ -213,7 +213,9 @@ describe('WorkerService', () => {
     await expect(worker.processNext()).resolves.toBe(true);
 
     expect(replies).toEqual([{ channel: 'C123', threadTs: '1710000000.000100', text: 'final deputy reply' }]);
-    expect(progress).toEqual([{ channel: 'C123', timestamp: '1710000001.000100', name: 'hourglass_flowing_sand' }]);
+    expect(progress).toEqual([
+      { channel: 'C123', threadTs: '1710000000.000100', status: 'Working on your request...' },
+    ]);
     const events = await services.events.list(session.id);
     expect(events.map((event) => event.type)).toContain('callback_sent');
     expect(events.find((event) => event.type === 'callback_sent')?.payload).toMatchObject({ targetType: 'slack' });
