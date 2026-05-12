@@ -20,6 +20,7 @@ type StreamEventPusher = (event: unknown) => void;
 type MockApiOptions = {
   submittedPrompts?: string[];
   messages?: unknown[];
+  messagesBySession?: Record<string, unknown[]>;
   events?: unknown[];
   sessions?: unknown[];
   callbacks?: unknown[];
@@ -33,6 +34,7 @@ type MockApiOptions = {
   onListSessions?: (count: number) => void;
   globalStreamStatus?: number;
   hangArchive?: boolean;
+  hangMessagesForSessions?: string[];
   hangSessions?: boolean;
   hangUnarchive?: boolean;
   hangSessionsAfterFirst?: boolean;
@@ -112,6 +114,41 @@ it('keeps sidebar reachable after mobile open, hide, and reopen actions', async 
   fireEvent.click(screen.getByRole('button', { name: 'Open sessions' }));
 
   expect(screen.getByRole('button', { name: 'Hide sidebar' })).toBeInTheDocument();
+});
+
+it('shows a session loading state instead of stale messages while selected details load', async () => {
+  const firstSession = { ...session, title: 'First session' };
+  const secondSession = {
+    ...session,
+    id: '00000000-0000-4000-8000-000000000002',
+    title: 'Second session',
+    updatedAt: '2026-05-05T11:00:00.000Z',
+  };
+  mockApi({
+    sessions: [firstSession, secondSession],
+    messagesBySession: {
+      [firstSession.id]: [
+        {
+          id: '00000000-0000-4000-8000-000000000011',
+          sessionId: firstSession.id,
+          sequence: 1,
+          status: 'completed',
+          prompt: 'stale first session message',
+          createdAt: '2026-05-05T12:00:00.000Z',
+        },
+      ],
+    },
+    hangMessagesForSessions: [secondSession.id],
+  });
+  render(<App />);
+
+  expect(await screen.findByText('stale first session message')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: /Second session/ }));
+
+  expect(await screen.findByRole('heading', { name: 'Second session' })).toBeInTheDocument();
+  expect(screen.getByText('Loading session')).toBeInTheDocument();
+  expect(screen.queryByText('stale first session message')).not.toBeInTheDocument();
 });
 
 it('keeps new-session action available from the sidebar on mobile', async () => {
@@ -1437,8 +1474,11 @@ function mockApi(options: MockApiOptions = {}) {
       return jsonResponse({ session: currentSession });
     }
 
-    if (url.pathname === `/sessions/${currentSession.id}/messages` && method === 'GET') {
-      return jsonResponse({ messages });
+    const messagesListMatch = url.pathname.match(/^\/sessions\/([^/]+)\/messages$/);
+    if (messagesListMatch && method === 'GET') {
+      const sessionId = messagesListMatch[1]!;
+      if (options.hangMessagesForSessions?.includes(sessionId)) return new Promise<Response>(() => undefined);
+      return jsonResponse({ messages: options.messagesBySession?.[sessionId] ?? messages });
     }
 
     if (url.pathname === `/sessions/${currentSession.id}/messages` && method === 'POST') {
@@ -1482,15 +1522,15 @@ function mockApi(options: MockApiOptions = {}) {
       return jsonResponse({ messages: messages.map((message) => ({ ...(message as object), status: 'cancelling' })) });
     }
 
-    if (url.pathname === `/sessions/${currentSession.id}/events`) {
+    if (url.pathname.match(/^\/sessions\/[^/]+\/events$/)) {
       return jsonResponse({ events: filterEventsAfter(options.events ?? [], url.searchParams.get('after')) });
     }
 
-    if (url.pathname === `/sessions/${currentSession.id}/artifacts`) {
+    if (url.pathname.match(/^\/sessions\/[^/]+\/artifacts$/)) {
       return jsonResponse({ artifacts: [] });
     }
 
-    if (url.pathname === `/sessions/${currentSession.id}/callbacks` && method === 'GET') {
+    if (url.pathname.match(/^\/sessions\/[^/]+\/callbacks$/) && method === 'GET') {
       return jsonResponse({ callbacks });
     }
 

@@ -261,6 +261,7 @@ export function App() {
   );
   const selectedRepository = repositoryLabel(selectedSession?.context?.repository);
   const selectedSessionArchived = selectedSession?.status === 'archived';
+  const selectedSessionDetailLoading = Boolean(selectedSessionId && detailLoadedSessionId !== selectedSessionId);
   const sortedSessions = useMemo(() => sortSessionsByLastActivity(sessions), [sessions]);
 
   useEffect(() => {
@@ -539,6 +540,7 @@ export function App() {
         listArtifacts(sessionId, token),
         listCallbacks(sessionId, token),
       ]);
+      if (selectedSessionIdRef.current !== sessionId) return;
       eventCursor.current = nextEvents.at(-1)?.sequence ?? 0;
       setMessages(nextMessages);
       setEvents(nextEvents);
@@ -1126,26 +1128,32 @@ export function App() {
                             role="log"
                             aria-label="Session messages"
                           >
-                            <MobileContextPanel
-                              repository={selectedRepository}
-                              artifacts={artifacts}
-                              callbacks={callbacks}
-                              onReplayCallback={handleReplayCallback}
-                            />
-                            <ChatPanel
-                              editingMessageId={editingMessageId}
-                              events={events}
-                              messageDraft={messageDraft}
-                              messages={messages}
-                              canRetryMessages={!selectedSessionArchived}
-                              onCancelEdit={() => finishEditingMessage(true)}
-                              onCancelQueuedMessage={cancelQueuedMessage}
-                              onCancelRun={cancelRun}
-                              onEditMessage={startEditingMessage}
-                              onMessageDraftChange={setMessageDraft}
-                              onRetryFailedMessages={retryFailedMessages}
-                              onSaveEdit={saveMessageEdit}
-                            />
+                            {selectedSessionDetailLoading ? (
+                              <ThreadDetailLoadingPanel />
+                            ) : (
+                              <>
+                                <MobileContextPanel
+                                  repository={selectedRepository}
+                                  artifacts={artifacts}
+                                  callbacks={callbacks}
+                                  onReplayCallback={handleReplayCallback}
+                                />
+                                <ChatPanel
+                                  editingMessageId={editingMessageId}
+                                  events={events}
+                                  messageDraft={messageDraft}
+                                  messages={messages}
+                                  canRetryMessages={!selectedSessionArchived}
+                                  onCancelEdit={() => finishEditingMessage(true)}
+                                  onCancelQueuedMessage={cancelQueuedMessage}
+                                  onCancelRun={cancelRun}
+                                  onEditMessage={startEditingMessage}
+                                  onMessageDraftChange={setMessageDraft}
+                                  onRetryFailedMessages={retryFailedMessages}
+                                  onSaveEdit={saveMessageEdit}
+                                />
+                              </>
+                            )}
                             <div ref={threadEndRef} />
                           </div>
                           {showJumpToLatest ? (
@@ -1160,20 +1168,24 @@ export function App() {
                           ) : null}
                         </div>
                         {selectedSessionArchived ? <ArchivedSessionNotice onRestore={restoreSelectedSession} /> : null}
-                        <MessageComposer
-                          key={selectedSession.id}
-                          archived={selectedSessionArchived}
-                          hasSelectedRepository={Boolean(selectedRepository)}
-                          onFocusChange={setComposerFocused}
-                          onSubmit={handleSendMessage}
-                        />
+                        {selectedSessionDetailLoading ? null : (
+                          <MessageComposer
+                            key={selectedSession.id}
+                            archived={selectedSessionArchived}
+                            hasSelectedRepository={Boolean(selectedRepository)}
+                            onFocusChange={setComposerFocused}
+                            onSubmit={handleSendMessage}
+                          />
+                        )}
                       </section>
-                      <DesktopContextPanel
-                        repository={selectedRepository}
-                        artifacts={artifacts}
-                        callbacks={callbacks}
-                        onReplayCallback={handleReplayCallback}
-                      />
+                      {selectedSessionDetailLoading ? null : (
+                        <DesktopContextPanel
+                          repository={selectedRepository}
+                          artifacts={artifacts}
+                          callbacks={callbacks}
+                          onReplayCallback={handleReplayCallback}
+                        />
+                      )}
                     </div>
                   </section>
                 )}
@@ -1183,6 +1195,22 @@ export function App() {
         </>
       )}
     </main>
+  );
+}
+
+function ThreadDetailLoadingPanel() {
+  return (
+    <section className="grid min-h-full place-items-center px-4 py-10" aria-busy="true" aria-live="polite">
+      <div className="w-full max-w-xl rounded-lg border border-border bg-card p-5 text-center shadow-sm">
+        <h3 className="text-sm font-semibold text-foreground">Loading session</h3>
+        <p className="mt-2 text-sm text-muted-foreground">Fetching the latest messages and activity.</p>
+        <div className="mt-5 grid gap-2" aria-hidden="true">
+          <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
+          <div className="h-3 animate-pulse rounded bg-muted" />
+          <div className="h-3 w-5/6 animate-pulse rounded bg-muted" />
+        </div>
+      </div>
+    </section>
   );
 }
 
