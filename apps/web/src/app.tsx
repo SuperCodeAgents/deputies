@@ -88,6 +88,10 @@ function loadInitialSelectedSessionId(): string {
   );
 }
 
+function loadInitialIsCreatingThread(): boolean {
+  return !new URLSearchParams(window.location.search).get('session') && localStorage.getItem(newSessionSelectedStorageKey) === 'true';
+}
+
 function loadThemePreference(): ThemePreference {
   const stored = localStorage.getItem(themeStorageKey);
   return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
@@ -201,9 +205,7 @@ export function App() {
   const [selectedSessionId, setSelectedSessionId] = useState<string>(loadInitialSelectedSessionId);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [isCreatingThread, setIsCreatingThread] = useState(
-    () => localStorage.getItem(newSessionSelectedStorageKey) === 'true',
-  );
+  const [isCreatingThread, setIsCreatingThread] = useState(loadInitialIsCreatingThread);
   const [messages, setMessages] = useState<Message[]>([]);
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);

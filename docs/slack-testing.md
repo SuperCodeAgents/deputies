@@ -16,6 +16,8 @@ Use a tunnel such as ngrok or cloudflared pointed at the web proxy:
 ngrok http 5173
 ```
 
+The Vite dev proxy allows common ngrok and cloudflared tunnel domains by default. If you use another tunnel host, set `VITE_DEV_ALLOWED_HOSTS=<host>` before `pnpm web:dev` so Vite does not return `403 Forbidden` before proxying Slack requests.
+
 Run the API with Slack config and the web proxy:
 
 ```sh
