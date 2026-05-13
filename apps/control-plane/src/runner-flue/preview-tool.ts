@@ -8,10 +8,12 @@ export type PublishedPreview = {
   port: number;
   label?: string;
   path?: string;
+  providerSandboxId?: string;
 };
 
 export type PreviewToolServices = {
   sessionId: string;
+  providerSandboxId: string;
   updateSessionContext: NonNullable<RunnerInput['updateSessionContext']>;
   getContext: () => Record<string, unknown>;
   setContext: (context: Record<string, unknown>) => void;
@@ -39,7 +41,7 @@ export function createPreviewTool(services: PreviewToolServices): ToolDef {
 
       const port = readPort(params.port);
       const current = readPreviews(services.getContext());
-      const next = action === 'publish' ? publishPreview(current, params, port) : unpublishPreview(current, port);
+      const next = action === 'publish' ? publishPreview(current, params, port, services.providerSandboxId) : unpublishPreview(current, port);
       const context = { ...services.getContext(), previews: next };
       services.setContext(await services.updateSessionContext(context));
 
@@ -59,13 +61,14 @@ export function readPreviews(context: Record<string, unknown>): PublishedPreview
     const preview: PublishedPreview = { port: record.port };
     if (typeof record.label === 'string' && record.label.trim()) preview.label = record.label.slice(0, maxLabelLength);
     if (typeof record.path === 'string' && isValidPath(record.path)) preview.path = record.path.slice(0, maxPathLength);
+    if (typeof record.providerSandboxId === 'string' && record.providerSandboxId.trim()) preview.providerSandboxId = record.providerSandboxId;
     previews.push(preview);
   }
   return previews;
 }
 
-function publishPreview(current: PublishedPreview[], params: Record<string, unknown>, port: number): PublishedPreview[] {
-  const preview: PublishedPreview = { port };
+function publishPreview(current: PublishedPreview[], params: Record<string, unknown>, port: number, providerSandboxId: string): PublishedPreview[] {
+  const preview: PublishedPreview = { port, providerSandboxId };
   const label = readOptionalString(params.label, 'label', maxLabelLength);
   const path = readOptionalPath(params.path);
   if (label) preview.label = label;

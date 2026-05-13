@@ -14,6 +14,7 @@ import type {
   RunRecord,
   RunStore,
   SandboxStore,
+  SessionRecord,
   SessionStore,
 } from '../store/types.js';
 
@@ -213,7 +214,8 @@ export class WorkerService {
     try {
       const session = await this.options.store.getSession(primary.sessionId);
       if (!session) throw new Error(`Session not found: ${primary.sessionId}`);
-      let runContext = { ...(session.context ?? {}), ...buildBatchContext(claimed.messages) };
+      const sessionContext = await this.clearSessionPreviewsForRun(session, claimed);
+      let runContext = { ...sessionContext, ...buildBatchContext(claimed.messages) };
       const result = await this.options.runner.run({
         sessionId: primary.sessionId,
         runId: claimed.run.id,
@@ -225,7 +227,11 @@ export class WorkerService {
         updateSessionContext: async (context) => {
           const session = await this.options.store.getSession(primary.sessionId);
           if (!session) throw new Error(`Session not found: ${primary.sessionId}`);
-          const updated = await this.options.store.updateSession({ ...session, context, updatedAt: new Date() });
+          const updated = await this.options.store.updateSession({
+            ...session,
+            context: { ...(session.context ?? {}), ...context },
+            updatedAt: new Date(),
+          });
           runContext = updated.context ?? {};
           await this.options.events.append({
             sessionId: primary.sessionId,
@@ -268,6 +274,27 @@ export class WorkerService {
     } finally {
       await this.options.store.updateSandbox({ ...record, updatedAt: new Date() });
     }
+  }
+
+  private async clearSessionPreviewsForRun(
+    session: SessionRecord,
+    claimed: ClaimedMessageBatch,
+  ): Promise<Record<string, unknown>> {
+    const context = session.context ?? {};
+    if (!Array.isArray(context.previews) || context.previews.length === 0) return context;
+    const updated = await this.options.store.updateSession({
+      ...session,
+      context: { ...context, previews: [] },
+      updatedAt: new Date(),
+    });
+    await this.options.events.append({
+      sessionId: claimed.messages[0]!.sessionId,
+      runId: claimed.run.id,
+      messageId: claimed.messages[0]!.id,
+      type: 'session_updated',
+      payload: { title: updated.title ?? null, context: updated.context ?? null },
+    });
+    return updated.context ?? {};
   }
 
   private async isRunCancellationRequested(runId: string): Promise<boolean> {

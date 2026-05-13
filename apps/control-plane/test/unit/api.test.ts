@@ -590,7 +590,11 @@ describe('core API', () => {
     await closeServer(server);
     const provider = new PreviewSandboxProvider(upstreamBaseUrl);
     server = createServer(
-      loadConfig({ API_AUTH_MODE: 'none', WEB_BASE_URL: 'https://deputies.localhost' }),
+      loadConfig({
+        API_AUTH_MODE: 'none',
+        WEB_BASE_URL: 'https://deputies.localhost',
+        PREVIEW_TRUST_FORWARDED_HOSTS: 'true',
+      }),
       createServices(store, { sandboxProvider: provider }),
     );
     baseUrl = await listen(server);
@@ -635,6 +639,22 @@ describe('core API', () => {
       expect(html).toContain(`/sessions/${session.id}/previews/3000/src/main.tsx`);
       await expect((await fetch(`${previewRoot}@vite/client`)).text()).resolves.toBe('vite client');
       await expect((await fetch(`${previewRoot}src/main.tsx`)).text()).resolves.toBe('main');
+      await expect(
+        (
+          await fetch(`${previewRoot}@vite/client`, {
+            headers: { host: `p-3000-${session.id}.evil.localhost` },
+          })
+        ).text(),
+      ).resolves.toBe('vite client');
+
+      const pathRedirect = await fetch(`${previewRoot}redirect`, { redirect: 'manual' });
+      expect(pathRedirect.headers.get('location')).toBe(`/sessions/${session.id}/previews/3000/dashboard`);
+
+      const hostRedirect = await fetch(`${baseUrl}/redirect`, {
+        redirect: 'manual',
+        headers: { 'x-forwarded-host': `p-3000-${session.id}.deputies.localhost` },
+      });
+      expect(hostRedirect.headers.get('location')).toBe('/dashboard');
     } finally {
       await closeServer(upstream);
     }
@@ -668,12 +688,48 @@ describe('core API', () => {
       await expect((await fetch(`${baseUrl}/sessions/${session.id}/previews`)).json()).resolves.toEqual({
         previews: [],
       });
-      await expect((await fetch(`${baseUrl}/sessions/${session.id}/previews?port=3000`)).json()).resolves.toMatchObject({
-        previews: [{ port: 3000 }],
-      });
+      await expect((await fetch(`${baseUrl}/sessions/${session.id}/previews?port=3000`)).json()).resolves.toMatchObject(
+        {
+          previews: [{ port: 3000 }],
+        },
+      );
     } finally {
       await closeServer(upstream);
     }
+  });
+
+  it('does not trust forwarded preview hosts unless explicitly configured', async () => {
+    const upstream = createPreviewUpstream();
+    const upstreamBaseUrl = await listen(upstream);
+    await closeServer(server);
+    const provider = new PreviewSandboxProvider(upstreamBaseUrl);
+    server = createServer(
+      loadConfig({ API_AUTH_MODE: 'none', WEB_BASE_URL: 'https://deputies.localhost' }),
+      createServices(store, { sandboxProvider: provider }),
+    );
+    baseUrl = await listen(server);
+
+    try {
+      const response = await fetch(`${baseUrl}/`, {
+        headers: { 'x-forwarded-host': 'p-3000-session-1.deputies.localhost' },
+      });
+
+      expect(response.status).toBe(404);
+    } finally {
+      await closeServer(upstream);
+    }
+  });
+
+  it('rejects preview hosts outside the configured preview domain', async () => {
+    await closeServer(server);
+    server = createServer(loadConfig({ API_AUTH_MODE: 'none', PREVIEW_BASE_DOMAIN: 'deputies.localhost' }));
+    baseUrl = await listen(server);
+
+    const response = await fetch(`${baseUrl}/`, {
+      headers: { host: 'p-3000-session-1.evil.localhost' },
+    });
+
+    expect(response.status).toBe(404);
   });
 
   it('unarchives a session', async () => {
@@ -883,7 +939,9 @@ describe('core API', () => {
       messageId: '00000000-0000-4000-8000-000000000914',
       result: {
         text: 'created artifact',
-        artifacts: [{ type: 'file', content: 'sample', contentType: 'text/plain', fileName: 'another-artifact-sample.txt' }],
+        artifacts: [
+          { type: 'file', content: 'sample', contentType: 'text/plain', fileName: 'another-artifact-sample.txt' },
+        ],
       },
     });
 
@@ -1149,6 +1207,11 @@ function createPreviewUpstream(): Server {
     if (request.url === '/src/main.tsx') {
       response.writeHead(200, { 'content-type': 'application/javascript' });
       response.end('main');
+      return;
+    }
+    if (request.url === '/redirect') {
+      response.writeHead(302, { location: '/dashboard' });
+      response.end();
       return;
     }
     response.writeHead(404, { 'content-type': 'application/json' });

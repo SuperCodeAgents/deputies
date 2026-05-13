@@ -947,6 +947,7 @@ function PreviewCard(props: { preview: SandboxPreview; compact?: boolean }) {
           <div className="flex items-center gap-2">
             <strong className="text-sm text-foreground">{props.preview.label ?? 'Live app preview'}</strong>
             <Badge>:{props.preview.port}</Badge>
+            {props.preview.status ? <Badge className="text-muted-foreground">{props.preview.status}</Badge> : null}
           </div>
           <p className="mt-1 truncate text-xs text-muted-foreground">
             Authenticated sandbox preview{props.preview.path ? ` · ${props.preview.path}` : ''}

@@ -10,13 +10,13 @@ Slack webhooks do not use product API session or bearer auth.
 
 Real Slack must call a public HTTPS URL. `portless` is useful for local emulators, but it does not expose your machine to Slack's cloud.
 
-Use a tunnel such as ngrok or cloudflared pointed at the web proxy:
+Use a public tunnel such as ngrok pointed at the web proxy:
 
 ```sh
 ngrok http 5173
 ```
 
-The Vite dev proxy allows common ngrok and cloudflared tunnel domains by default. If you use another tunnel host, set `VITE_DEV_ALLOWED_HOSTS=<host>` before `pnpm web:dev` so Vite does not return `403 Forbidden` before proxying Slack requests.
+The Vite dev proxy allows common tunnel domains by default. If you use another tunnel host, set `VITE_DEV_ALLOWED_HOSTS=<host>` before `pnpm web:dev` so Vite does not return `403 Forbidden` before proxying Slack requests.
 
 Run the API with Slack config and the web proxy:
 

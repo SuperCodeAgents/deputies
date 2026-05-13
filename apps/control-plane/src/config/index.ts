@@ -42,6 +42,7 @@ export type AppConfig = {
   authSuccessRedirectUrl?: string;
   webBaseUrl?: string;
   previewBaseDomain?: string;
+  previewTrustForwardedHosts: boolean;
   githubAppClientId?: string;
   githubAppClientSecret?: string;
   githubAppCallbackUrl?: string;
@@ -120,6 +121,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     authProvider: parseEnum(env.AUTH_PROVIDER, ['static', 'github'], 'static'),
     authCookieSecure: parseBoolean(env.AUTH_COOKIE_SECURE, false, 'AUTH_COOKIE_SECURE'),
     authCookieSameSite: parseEnum(env.AUTH_COOKIE_SAME_SITE, ['lax', 'none'], 'lax'),
+    previewTrustForwardedHosts: parseBoolean(env.PREVIEW_TRUST_FORWARDED_HOSTS, false, 'PREVIEW_TRUST_FORWARDED_HOSTS'),
     githubOAuthBaseUrl: env.GITHUB_OAUTH_BASE_URL ?? 'https://github.com',
     authGithubAllowedUsers: parseStringList(env.AUTH_GITHUB_ALLOWED_USERS),
     authGithubAllowedOrganizations: parseStringList(env.AUTH_GITHUB_ALLOWED_ORGANIZATIONS),

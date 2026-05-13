@@ -173,6 +173,10 @@ describe('WorkerService', () => {
     const store = new MemoryStore();
     const services = createServices(store);
     const session = await services.sessions.create({ title: 'Dynamic context' });
+    await store.updateSession({
+      ...session,
+      context: { previews: [{ port: 3000, label: 'Web app' }] },
+    });
     await services.messages.enqueue({ sessionId: session.id, prompt: 'choose repo' });
 
     const worker = new WorkerService({
@@ -187,7 +191,10 @@ describe('WorkerService', () => {
     await expect(worker.processNext()).resolves.toBe(true);
 
     await expect(services.sessions.get(session.id)).resolves.toMatchObject({
-      context: { repository: { provider: 'github', owner: 'manaflow-ai', repo: 'manaflow' } },
+      context: {
+        previews: [],
+        repository: { provider: 'github', owner: 'manaflow-ai', repo: 'manaflow' },
+      },
     });
     const events = await services.events.list(session.id);
     expect(events.map((event) => event.type)).toContain('session_updated');

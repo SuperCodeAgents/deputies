@@ -1150,6 +1150,7 @@ function shouldRefreshSessionDetail(eventType: string): boolean {
     'message_completed',
     'message_failed',
     'message_cancelled',
+    'session_updated',
     'run_cancel_requested',
     'run_cancelled',
     'artifact_created',

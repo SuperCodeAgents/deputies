@@ -5,6 +5,7 @@ describe('preview tool', () => {
     let context: Record<string, unknown> = {};
     const tool = createPreviewTool({
       sessionId: 'session-1',
+      providerSandboxId: 'sandbox-1',
       getContext: () => context,
       setContext: (next) => {
         context = next;
@@ -16,11 +17,11 @@ describe('preview tool', () => {
     });
 
     await expect(
-      tool.execute({ action: 'publish', port: 5173, label: 'Vite app', path: '/dashboard' }),
-    ).resolves.toBe(JSON.stringify({ previews: [{ port: 5173, label: 'Vite app', path: '/dashboard' }] }));
-    await expect(tool.execute({ action: 'list' })).resolves.toBe(
-      JSON.stringify({ previews: [{ port: 5173, label: 'Vite app', path: '/dashboard' }] }),
-    );
+      tool.execute({ action: 'publish', port: 5173, label: 'Vite app', path: '/dashboard' }).then(JSON.parse),
+    ).resolves.toEqual({ previews: [{ port: 5173, label: 'Vite app', path: '/dashboard', providerSandboxId: 'sandbox-1' }] });
+    await expect(tool.execute({ action: 'list' }).then(JSON.parse)).resolves.toEqual({
+      previews: [{ port: 5173, label: 'Vite app', path: '/dashboard', providerSandboxId: 'sandbox-1' }],
+    });
     await expect(tool.execute({ action: 'unpublish', port: 5173 })).resolves.toBe(JSON.stringify({ previews: [] }));
   });
 });

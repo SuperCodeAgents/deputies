@@ -1,13 +1,15 @@
 import { defineConfig } from 'vite';
+import type { Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:3583';
+const portlessUrl = process.env.VITE_PORTLESS_URL ?? 'http://deputies.localhost';
 const allowedHosts = process.env.VITE_DEV_ALLOWED_HOSTS
   ? process.env.VITE_DEV_ALLOWED_HOSTS.split(',')
       .map((host) => host.trim())
       .filter(Boolean)
-  : ['.localhost', '.sslip.io', '.ngrok-free.app', '.ngrok-free.dev', '.ngrok.io', '.trycloudflare.com'];
+  : ['.localhost', '.ngrok-free.app', '.ngrok-free.dev', '.ngrok.io'];
 const apiProxy = { target: apiProxyTarget, ws: true };
 const previewProxy = {
   target: apiProxyTarget,
@@ -36,7 +38,7 @@ function isPreviewRequest(headers: {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), portlessUrlPlugin()],
   server: {
     host: '0.0.0.0',
     port: 5173,
@@ -52,3 +54,14 @@ export default defineConfig({
     },
   },
 });
+
+function portlessUrlPlugin(): Plugin {
+  return {
+    name: 'deputies-portless-url',
+    configureServer(server) {
+      server.httpServer?.once('listening', () => {
+        server.config.logger.info(`  Portless: ${portlessUrl}`);
+      });
+    },
+  };
+}

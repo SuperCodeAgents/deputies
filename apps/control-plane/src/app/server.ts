@@ -94,10 +94,10 @@ export function createServices(
     genericWebhooks: new GenericWebhookService(store, sessions, messages),
     callbacks: new CallbackService(store, events),
   };
-  if (options.sandboxProvider)
+  if (options.sandboxProvider) {
     services.sandboxProvider = options.sandboxProvider;
-  if (options.sandboxProvider)
     services.sandboxCleanup = new SandboxCleanupService(store, events, options.sandboxProvider);
+  }
   return services;
 }
 
@@ -250,11 +250,7 @@ export function createApp(config: AppConfig, services = createServices()) {
   app.use('/events', apiAuthMiddleware(config, services.store));
 
   app.use('*', async (c, next) => {
-    const previewHost = parsePreviewHostFromHeaders(
-      c.req.header('x-forwarded-host'),
-      c.req.header('x-original-host'),
-      c.req.header('host'),
-    );
+    const previewHost = parsePreviewHostFromRequest(config, c);
     if (!previewHost) {
       await next();
       return;
@@ -263,9 +259,9 @@ export function createApp(config: AppConfig, services = createServices()) {
       return writeError(c, 401, 'unauthorized', 'Missing or invalid session');
     const session = await services.sessions.get(previewHost.sessionId);
     if (!session) return writeError(c, 404, 'not_found', 'Session not found');
-    const preview = await getSessionPreview(services, previewHost.sessionId, previewHost.port);
+    const preview = await getSessionPreview(config, services, previewHost.sessionId, previewHost.port);
     if (!preview) return writeError(c, 404, 'not_found', 'Preview URL is not available for this sandbox');
-    return proxyPreview(c, previewHost.sessionId, previewHost.port, preview);
+    return proxyPreview(c, config, previewHost.sessionId, previewHost.port, preview);
   });
 
   app.post('/sessions', async (c) => {
@@ -651,7 +647,9 @@ export function createApp(config: AppConfig, services = createServices()) {
     const requested = requestedPort ? [{ port: requestedPort }] : published;
     const previews = [];
     for (const item of requested) {
-      const preview = await getSessionPreview(services, sessionId, item.port);
+      if (item.providerSandboxId && !(await isActivePreviewSandbox(services, sessionId, item.providerSandboxId)))
+        continue;
+      const preview = await getSessionPreview(config, services, sessionId, item.port);
       if (preview) previews.push(serializePreview(c, config, sessionId, preview, item));
     }
     return c.json({ previews });
@@ -665,9 +663,9 @@ export function createApp(config: AppConfig, services = createServices()) {
 
     const port = parsePreviewPort(c.req.param('port'));
     if (!port) return writeError(c, 400, 'invalid_request', 'Invalid preview port');
-    const preview = await getSessionPreview(services, sessionId, port);
+    const preview = await getSessionPreview(config, services, sessionId, port);
     if (!preview) return writeError(c, 404, 'not_found', 'Preview URL is not available for this sandbox');
-    return proxyPreview(c, sessionId, port, preview);
+    return proxyPreview(c, config, sessionId, port, preview);
   };
 
   app.all('/sessions/:sessionId/previews/:port', handlePreviewProxy);
@@ -745,18 +743,69 @@ function writeError(c: Context, statusCode: number, error: string, message: stri
   return c.json({ error, message }, statusCode as never);
 }
 
-async function getSessionPreview(services: AppServices, sessionId: string, port: number): Promise<SandboxPreviewUrl | null> {
+async function getSessionPreview(
+  config: AppConfig,
+  services: AppServices,
+  sessionId: string,
+  port: number,
+): Promise<SandboxPreviewUrl | null> {
   const provider = services.sandboxProvider;
   if (!provider?.getPreviewUrl || !provider.capabilities.previewUrls) return null;
   const sandbox = await services.store.getActiveSandbox(sessionId, provider.name);
   if (!sandbox) return null;
   const health = await provider.health(sandbox);
   if (health.status !== 'ready') return null;
-  return provider.getPreviewUrl({
+  const preview = await provider.getPreviewUrl({
     providerSandboxId: sandbox.providerSandboxId,
     sessionId,
     port,
   });
+  return preview && isAllowedPreviewTarget(config, provider.name, preview.targetUrl) ? preview : null;
+}
+
+async function isActivePreviewSandbox(
+  services: AppServices,
+  sessionId: string,
+  providerSandboxId: string,
+): Promise<boolean> {
+  const provider = services.sandboxProvider;
+  if (!provider) return false;
+  const sandbox = await services.store.getActiveSandbox(sessionId, provider.name);
+  return sandbox?.providerSandboxId === providerSandboxId;
+}
+
+function isAllowedPreviewTarget(config: AppConfig, provider: string, value: string): boolean {
+  let target: URL;
+  try {
+    target = new URL(value);
+  } catch {
+    return false;
+  }
+  if (target.protocol !== 'http:' && target.protocol !== 'https:') return false;
+  if (provider === 'fake') return target.protocol === 'http:';
+  if (provider === 'docker') return isAllowedDockerPreviewTarget(config, target);
+  if (provider === 'daytona') return target.protocol === 'https:' && !isLocalOrPrivateHostname(target.hostname);
+  return !isLocalOrPrivateHostname(target.hostname);
+}
+
+function isAllowedDockerPreviewTarget(config: AppConfig, target: URL): boolean {
+  const allowedHosts = new Set(['localhost', '127.0.0.1', config.dockerSandboxBridgeHost]);
+  return target.protocol === 'http:' && allowedHosts.has(target.hostname.toLowerCase());
+}
+
+function isLocalOrPrivateHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (host === '0.0.0.0' || host.startsWith('127.') || host.startsWith('10.') || host.startsWith('192.168.'))
+    return true;
+  const parts = host.split('.').map((part) => Number(part));
+  if (parts.length === 4 && parts.every((part) => Number.isInteger(part))) {
+    const first = parts[0]!;
+    const second = parts[1]!;
+    if (first === 172 && second >= 16 && second <= 31) return true;
+    if (first === 169 && second === 254) return true;
+  }
+  return host === '::1' || host.startsWith('fc') || host.startsWith('fd');
 }
 
 function serializePreview(
@@ -770,6 +819,7 @@ function serializePreview(
   return {
     port: preview.port,
     url,
+    status: 'available',
     ...(metadata.label ? { label: metadata.label } : {}),
     ...(metadata.path ? { path: metadata.path } : {}),
   };
@@ -777,20 +827,23 @@ function serializePreview(
 
 async function proxyPreview(
   c: Context,
+  config: AppConfig,
   sessionId: string,
   port: number,
   preview: SandboxPreviewUrl,
 ): Promise<Response> {
-  const target = previewTargetUrl(c, sessionId, port, preview.targetUrl);
+  const isHostPreview = Boolean(parsePreviewHostFromRequest(config, c));
+  const target = previewTargetUrl(c, sessionId, port, preview.targetUrl, isHostPreview);
   const request = c.req.raw;
   const response = await fetch(target, {
     method: request.method,
     headers: previewRequestHeaders(request.headers, preview.targetHeaders),
     body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
+    redirect: 'manual',
     duplex: 'half',
   } as RequestInit & { duplex: 'half' });
-  const headers = previewResponseHeaders(response.headers, sessionId, port);
-  if (!parsePreviewHostFromHeaders(c.req.header('x-forwarded-host'), c.req.header('x-original-host'), c.req.header('host')) && isHtmlResponse(headers)) {
+  const headers = previewResponseHeaders(response.headers, sessionId, port, !isHostPreview);
+  if (!isHostPreview && isHtmlResponse(headers)) {
     const text = rewritePreviewHtml(await response.text(), previewBasePath(sessionId, port));
     return new Response(text, {
       status: response.status,
@@ -805,24 +858,30 @@ async function proxyPreview(
   });
 }
 
-function previewTargetUrl(c: Context, sessionId: string, port: number, targetUrl: string): string {
-  return previewTargetUrlFromUrl(new URL(c.req.url), previewRequestHost(c), sessionId, port, targetUrl);
+function previewTargetUrl(
+  c: Context,
+  sessionId: string,
+  port: number,
+  targetUrl: string,
+  isHostPreview: boolean,
+): string {
+  return previewTargetUrlFromUrl(new URL(c.req.url), isHostPreview, sessionId, port, targetUrl);
 }
 
 function previewTargetUrlFromUrl(
   incoming: URL,
-  host: string | undefined,
+  isHostPreview: boolean,
   sessionId: string,
   port: number,
   targetUrl: string,
 ): string {
   const prefix = `/sessions/${sessionId}/previews/${port}`;
-  const hostPreview = parsePreviewHost(host) ?? parsePreviewHost(incoming.host);
-  const suffix = hostPreview
-    ? incoming.pathname || '/'
-    : incoming.pathname.startsWith(prefix)
-      ? incoming.pathname.slice(prefix.length) || '/'
-      : '/';
+  let suffix = '/';
+  if (isHostPreview) {
+    suffix = incoming.pathname || '/';
+  } else if (incoming.pathname.startsWith(prefix)) {
+    suffix = incoming.pathname.slice(prefix.length) || '/';
+  }
   const target = new URL(targetUrl);
   target.pathname = joinUrlPath(target.pathname, suffix);
   target.search = incoming.search;
@@ -832,8 +891,9 @@ function previewTargetUrlFromUrl(
 function previewUrl(c: Context, config: AppConfig, sessionId: string, port: number, path = '/'): string {
   const baseUrl = config.webBaseUrl ? new URL(config.webBaseUrl) : null;
   const requestUrl = new URL(c.req.url);
-  const requestHost = baseUrl?.host ?? c.req.header('x-forwarded-host') ?? c.req.header('host') ?? requestUrl.host;
-  const protocol = baseUrl?.protocol.replace(/:$/, '') ?? c.req.header('x-forwarded-proto') ?? requestUrl.protocol.replace(/:$/, '');
+  const requestHost = baseUrl?.host ?? previewRequestHost(config, c) ?? requestUrl.host;
+  const protocol =
+    baseUrl?.protocol.replace(/:$/, '') ?? c.req.header('x-forwarded-proto') ?? requestUrl.protocol.replace(/:$/, '');
   const domain = config.previewBaseDomain ?? previewDomainFromHost(requestHost);
   const suffix = path.startsWith('/') ? path.slice(1) : path;
   if (!domain) return `${previewBasePath(sessionId, port)}${suffix}`;
@@ -843,10 +903,7 @@ function previewUrl(c: Context, config: AppConfig, sessionId: string, port: numb
 function previewDomainFromHost(host: string): string | null {
   const hostname = host.split(':')[0] ?? '';
   const port = host.includes(':') ? `:${host.split(':').pop()}` : '';
-  if (hostname === 'localhost' || hostname === '127.0.0.1') return `127.0.0.1.sslip.io${port}`;
   if (hostname === 'deputies.localhost' || hostname.endsWith('.deputies.localhost')) return `${hostname}${port}`;
-  if (hostname.startsWith('deputies.') && hostname.endsWith('.sslip.io')) return `${hostname}${port}`;
-  if (hostname.endsWith('.sslip.io')) return `${hostname}${port}`;
   return null;
 }
 
@@ -854,8 +911,14 @@ function previewHostLabel(sessionId: string, port: number): string {
   return `p-${port}-${sessionId}`;
 }
 
-function parsePreviewHost(host: string | undefined): { sessionId: string; port: number } | null {
-  const label = host?.split(':')[0]?.split('.')[0];
+function parsePreviewHost(
+  host: string | undefined,
+  allowedDomains?: string[],
+): { sessionId: string; port: number } | null {
+  const hostname = host?.split(':')[0]?.toLowerCase();
+  if (!hostname) return null;
+  if (allowedDomains?.length && !allowedDomains.some((domain) => hostname.endsWith(`.${domain}`))) return null;
+  const label = hostname.split('.')[0];
   const match = label?.match(/^p-(\d+)-(.+)$/);
   if (!match) return null;
   const port = parsePreviewPort(match[1]);
@@ -863,27 +926,99 @@ function parsePreviewHost(host: string | undefined): { sessionId: string; port: 
   return { port, sessionId: match[2]! };
 }
 
-function parsePreviewHostFromHeaders(...values: Array<string | string[] | undefined>): { sessionId: string; port: number } | null {
-  for (const host of previewHeaderHosts(values)) {
-    const parsed = parsePreviewHost(host);
+function parsePreviewHostFromRequest(config: AppConfig, c: Context): { sessionId: string; port: number } | null {
+  return parsePreviewHostFromHosts(previewRequestHosts(config, c), previewAllowedDomains(config, c));
+}
+
+function parsePreviewHostFromNodeRequest(
+  config: AppConfig,
+  request: IncomingMessage,
+): { sessionId: string; port: number } | null {
+  return parsePreviewHostFromHosts(previewNodeRequestHosts(config, request), previewAllowedDomains(config, request));
+}
+
+function parsePreviewHostFromHosts(
+  hosts: string[],
+  allowedDomains: string[],
+): { sessionId: string; port: number } | null {
+  for (const host of hosts) {
+    const parsed = parsePreviewHost(host, allowedDomains);
     if (parsed) return parsed;
   }
   return null;
 }
 
-function previewRequestHost(c: Context): string | undefined {
-  return previewHeaderHosts([c.req.header('x-forwarded-host'), c.req.header('x-original-host'), c.req.header('host')])[0];
+function previewRequestHost(config: AppConfig, c: Context): string | undefined {
+  return previewRequestHosts(config, c)[0];
 }
 
-function previewNodeRequestHost(request: IncomingMessage): string | undefined {
-  return previewHeaderHosts([request.headers['x-forwarded-host'], request.headers['x-original-host'], request.headers.host])[0];
+function previewRequestHosts(config: AppConfig, c: Context): string[] {
+  return previewHeaderHosts(
+    previewHostHeaderValues(
+      config,
+      c.req.header('host'),
+      c.req.header('x-forwarded-host'),
+      c.req.header('x-original-host'),
+    ),
+  );
+}
+
+function previewNodeRequestHosts(config: AppConfig, request: IncomingMessage): string[] {
+  return previewHeaderHosts(
+    previewHostHeaderValues(
+      config,
+      request.headers.host,
+      request.headers['x-forwarded-host'],
+      request.headers['x-original-host'],
+    ),
+  );
+}
+
+function previewHostHeaderValues(
+  config: AppConfig,
+  host: string | string[] | undefined,
+  forwardedHost: string | string[] | undefined,
+  originalHost: string | string[] | undefined,
+): Array<string | string[] | undefined> {
+  return config.previewTrustForwardedHosts ? [forwardedHost, originalHost, host] : [host];
 }
 
 function previewHeaderHosts(values: Array<string | string[] | undefined>): string[] {
   return values.flatMap((value) => {
     const items = Array.isArray(value) ? value : value ? [value] : [];
-    return items.flatMap((item) => item.split(',').map((host) => host.trim()).filter(Boolean));
+    return items.flatMap((item) =>
+      item
+        .split(',')
+        .map((host) => host.trim())
+        .filter(Boolean),
+    );
   });
+}
+
+function previewAllowedDomains(config: AppConfig, request?: Context | IncomingMessage): string[] {
+  const domains = new Set<string>();
+  if (config.previewBaseDomain) domains.add(stripPort(config.previewBaseDomain));
+  if (config.webBaseUrl) {
+    const derived = previewDomainFromHost(new URL(config.webBaseUrl).host);
+    if (derived) domains.add(stripPort(derived));
+  }
+  const host = previewAllowedDomainRequestHost(request);
+  const firstHost = Array.isArray(host) ? host[0] : host;
+  if (firstHost) {
+    const derived = previewDomainFromHost(firstHost);
+    if (derived) domains.add(stripPort(derived));
+  }
+  return Array.from(domains);
+}
+
+function previewAllowedDomainRequestHost(request?: Context | IncomingMessage): string | string[] | undefined {
+  if (!request) return undefined;
+  if ('req' in request) return request.req.header('host');
+  return request.headers.host;
+}
+
+function stripPort(host: string): string {
+  return host.split(':')[0]?.toLowerCase() ?? host.toLowerCase();
 }
 
 async function handlePreviewUpgrade(
@@ -894,12 +1029,7 @@ async function handlePreviewUpgrade(
   head: Buffer,
 ): Promise<void> {
   const incoming = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
-  const requestHost = previewNodeRequestHost(request);
-  const hostPreview = parsePreviewHostFromHeaders(
-    request.headers['x-forwarded-host'],
-    request.headers['x-original-host'],
-    request.headers.host,
-  );
+  const hostPreview = parsePreviewHostFromNodeRequest(config, request);
   const pathMatch = incoming.pathname.match(/^\/sessions\/([^/]+)\/previews\/(\d+)(?:\/.*)?$/);
   if (!hostPreview && !pathMatch) {
     socket.destroy();
@@ -917,7 +1047,7 @@ async function handlePreviewUpgrade(
     socket.destroy();
     return;
   }
-  const preview = await getSessionPreview(services, sessionId, port);
+  const preview = await getSessionPreview(config, services, sessionId, port);
   if (!preview) {
     socket.destroy();
     return;
@@ -934,7 +1064,7 @@ async function handlePreviewUpgrade(
     request,
     socket,
     head,
-    targetUrl: previewTargetUrlFromUrl(incoming, requestHost, sessionId, port, preview.targetUrl),
+    targetUrl: previewTargetUrlFromUrl(incoming, Boolean(hostPreview), sessionId, port, preview.targetUrl),
     preserveOrigin: Boolean(hostPreview),
   };
   if (preview.targetHeaders) upgradeInput.targetHeaders = preview.targetHeaders;
@@ -947,14 +1077,18 @@ async function isAuthorizedUpgrade(
   request: IncomingMessage,
 ): Promise<boolean> {
   if (config.apiAuthMode === 'none') return true;
-  if (config.apiAuthMode === 'bearer') return request.headers.authorization === `Bearer ${requireApiBearerToken(config)}`;
+  if (config.apiAuthMode === 'bearer')
+    return request.headers.authorization === `Bearer ${requireApiBearerToken(config)}`;
   const authSessionId = parseCookieHeader(request.headers.cookie ?? '')[sessionCookieName];
-  return Boolean(authSessionId && (await services.store.getAuthUserBySession({ sessionId: authSessionId, now: new Date() })));
+  return Boolean(
+    authSessionId && (await services.store.getAuthUserBySession({ sessionId: authSessionId, now: new Date() })),
+  );
 }
 
 async function isAuthorizedRequest(config: AppConfig, store: AppStore, c: Context): Promise<boolean> {
   if (config.apiAuthMode === 'none') return true;
-  if (config.apiAuthMode === 'bearer') return c.req.header('authorization') === `Bearer ${requireApiBearerToken(config)}`;
+  if (config.apiAuthMode === 'bearer')
+    return c.req.header('authorization') === `Bearer ${requireApiBearerToken(config)}`;
   const authSessionId = readSessionId(c);
   return Boolean(authSessionId && (await store.getAuthUserBySession({ sessionId: authSessionId, now: new Date() })));
 }
@@ -1000,9 +1134,12 @@ function upgradeRequestHead(
 ): string {
   const headers = previewUpgradeHeaders(request, target, injected, preserveOrigin);
   const path = `${target.pathname || '/'}${target.search}`;
-  return [`${request.method ?? 'GET'} ${path} HTTP/1.1`, ...headers.map(([key, value]) => `${key}: ${value}`), '', ''].join(
-    '\r\n',
-  );
+  return [
+    `${request.method ?? 'GET'} ${path} HTTP/1.1`,
+    ...headers.map(([key, value]) => `${key}: ${value}`),
+    '',
+    '',
+  ].join('\r\n');
 }
 
 function previewUpgradeHeaders(
@@ -1059,12 +1196,13 @@ function previewRequestHeaders(input: Headers, injected: Record<string, string> 
   return headers;
 }
 
-function previewResponseHeaders(input: Headers, sessionId: string, port: number): Headers {
+function previewResponseHeaders(input: Headers, sessionId: string, port: number, rewriteLocations: boolean): Headers {
   const headers = new Headers();
   for (const [key, value] of input.entries()) {
     const lower = key.toLowerCase();
-    if (['connection', 'content-encoding', 'content-length', 'set-cookie', 'transfer-encoding'].includes(lower)) continue;
-    headers.set(key, lower === 'location' ? rewritePreviewLocation(value, sessionId, port) : value);
+    if (['connection', 'content-encoding', 'content-length', 'set-cookie', 'transfer-encoding'].includes(lower))
+      continue;
+    headers.set(key, lower === 'location' && rewriteLocations ? rewritePreviewLocation(value, sessionId, port) : value);
   }
   return headers;
 }

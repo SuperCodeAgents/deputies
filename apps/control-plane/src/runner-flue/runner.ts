@@ -39,7 +39,6 @@ export class FlueRunner implements Runner {
     const repositorySetup = await prepareRepositoryShellSetup(repositorySetupInput);
     const agentRef: AgentRef = {};
     const repositoryState: RepositoryToolState = { context: structuredClone(input.context) };
-    const previewState = { context: structuredClone(input.context) };
     if (repositorySetup) {
       repositoryState.prepared = {
         repository: { provider: 'github', owner: repositorySetup.access.owner, repo: repositorySetup.access.repo },
@@ -82,10 +81,10 @@ export class FlueRunner implements Runner {
       tools.push(
         createPreviewTool({
           sessionId: input.sessionId,
+          providerSandboxId: input.sandbox.providerSandboxId,
           updateSessionContext: input.updateSessionContext,
-          getContext: () => previewState.context,
+          getContext: () => repositoryState.context,
           setContext: (context) => {
-            previewState.context = context;
             repositoryState.context = context;
           },
         }),

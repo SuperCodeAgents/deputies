@@ -6,6 +6,8 @@ import type { CreateSandboxRecord, SandboxRecord, SandboxStore } from '../../src
 const enabled = process.env.RUN_REAL_DOCKER_SANDBOX_UAT === 'true';
 const image = process.env.DOCKER_SANDBOX_IMAGE ?? 'deputies-sandbox:local';
 const sessionId = 'real-docker-sandbox-uat';
+const previewServerCommand =
+  "node -e \"require('http').createServer((_req,res)=>res.end('preview ok')).listen(4534,'127.0.0.1')\" >/tmp/deputies-preview-uat.log 2>&1 &";
 
 describe.skipIf(!enabled)('real Docker sandbox UAT', () => {
   let provider: DockerSandboxProvider;
@@ -47,6 +49,30 @@ describe.skipIf(!enabled)('real Docker sandbox UAT', () => {
     await expect(
       second.sandbox.exec({ command: 'printf resumed', cwd: second.sandbox.workspacePath, timeoutMs: 5_000 }),
     ).resolves.toMatchObject({ exitCode: 0, stdout: 'resumed' });
+  }, 60_000);
+
+  it('serves a sandbox app through a preview URL', async () => {
+    await requireDockerImage(image);
+    const lifecycle = new SandboxLifecycleService(store, provider);
+
+    const { record, sandbox } = await lifecycle.ensure(sessionId);
+    sandboxRecord = record;
+    const startServer = await sandbox.exec({
+      command: previewServerCommand,
+      cwd: sandbox.workspacePath,
+      timeoutMs: 5_000,
+    });
+    expect(startServer.exitCode).toBe(0);
+
+    const preview = await provider.getPreviewUrl?.({
+      providerSandboxId: sandbox.providerSandboxId,
+      sessionId,
+      port: 4534,
+    });
+    expect(preview).toMatchObject({ port: 4534 });
+    if (!preview) throw new Error('Expected preview URL');
+
+    await waitForPreview(preview.targetUrl, preview.targetHeaders, 'preview ok');
   }, 60_000);
 });
 
@@ -137,4 +163,27 @@ function docker(args: string[], options: { allowFailure?: boolean } = {}): Promi
       else resolve({ exitCode, stdout, stderr });
     });
   });
+}
+
+async function waitForPreview(
+  url: string,
+  headers: Record<string, string> | undefined,
+  expectedText: string,
+  timeoutMs = 10_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown;
+  while (Date.now() < deadline) {
+    try {
+      const init: RequestInit = headers ? { headers } : {};
+      const response = await fetch(url, init);
+      const text = await response.text();
+      if (response.ok && text === expectedText) return;
+      lastError = new Error(`Unexpected preview response: ${response.status} ${text}`);
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw lastError instanceof Error ? lastError : new Error('Timed out waiting for preview');
 }

@@ -22,15 +22,17 @@ The web app uses same-origin API requests by default. In Vite dev mode, `apps/we
 VITE_API_PROXY_TARGET=http://localhost:3583 pnpm web:dev
 ```
 
-### Local HTTPS and Sandbox Previews
+### Local Sandbox Previews
 
-Use `portless` when developing session-cookie auth and sandbox previews locally. It provides trusted HTTPS and wildcard `.localhost` hosts, so previews can use production-like subdomains such as `https://p-3000-<session-id>.deputies.localhost`.
+Use a host-preserving wildcard proxy when developing session-cookie auth and sandbox previews locally. `portless --no-tls` is the simplest local-only option. Published previews use one-label wildcard subdomains such as `http://p-3000-<session-id>.deputies.localhost`.
 
-Start the wildcard proxy in one terminal:
+Use `--no-tls` for local previews because the default HTTPS portless proxy can strip the original wildcard host before requests reach the Docker Compose web proxy. The preview router needs that host, for example `p-3000-<session-id>.deputies.localhost`, to identify the session and sandbox port.
+
+Start the HTTP wildcard proxy in one terminal. Portless uses port `80` for `--no-tls`, so accept the sudo prompt when it starts:
 
 ```sh
-pnpm portless:start
-# or: mise run portless-start
+pnpm portless:start:http
+# or: mise run portless-start-http
 ```
 
 Register the web UI alias once, or after resetting portless aliases:
@@ -47,22 +49,39 @@ set -a; . ./.env.local; set +a; pnpm control-plane:dev
 pnpm web:dev
 ```
 
-Open the app at `https://deputies.localhost`. Published previews are listed from `GET /sessions/:sessionId/previews`; no preview is shown until the agent publishes one with the preview tool.
-
-The Deputies web dev server moves its own Vite HMR socket to `/__deputies_vite_hmr` so preview app WebSocket upgrades on `/` can pass through the preview proxy. For Vite apps running inside a sandbox, avoid hard-coding `server.hmr.host`, `server.hmr.clientPort`, or `server.hmr.protocol` to `localhost`; let Vite infer the preview browser URL.
+Open the app at `http://deputies.localhost`. Published previews are listed from `GET /sessions/:sessionId/previews`; no preview is shown until the agent publishes one with the preview tool.
 
 For portless local development, use these `.env.local` values:
 
 ```sh
 VITE_API_BASE_URL=
-WEB_BASE_URL=https://deputies.localhost
-AUTH_SUCCESS_REDIRECT_URL=https://deputies.localhost
+WEB_BASE_URL=http://deputies.localhost
+AUTH_SUCCESS_REDIRECT_URL=http://deputies.localhost
 AUTH_COOKIE_DOMAIN=.deputies.localhost
-AUTH_COOKIE_SECURE=true
+AUTH_COOKIE_SECURE=false
 PREVIEW_BASE_DOMAIN=deputies.localhost
+PREVIEW_TRUST_FORWARDED_HOSTS=true
 ```
 
-If you keep using plain Vite without portless, keep `AUTH_COOKIE_SECURE=false` and use an HTTP `WEB_BASE_URL`/`AUTH_SUCCESS_REDIRECT_URL` instead.
+`portless proxy start --no-tls --wildcard` preserves wildcard preview hosts into the web proxy, including `Host` and `X-Forwarded-Host` values like `p-test.deputies.localhost`.
+
+Preview links are browser navigations. They work with `API_AUTH_MODE=none` or session-cookie auth. They do not work with bearer-token-only auth because the browser cannot attach the UI's localStorage bearer token to a new tab.
+
+For production-like deployments, configure real DNS records so the app hostname and wildcard preview hostname point to the deployed web/API entrypoint. Prefer a first-level wildcard such as `*.example.com`; nested wildcards like `*.app.example.com` may require provider-specific certificate upgrades such as Cloudflare Advanced Certificate Manager. For example, use `app.example.com` for the UI and `p-<session>.example.com` for previews, then set:
+
+```sh
+VITE_API_BASE_URL=
+WEB_BASE_URL=https://app.example.com
+AUTH_SUCCESS_REDIRECT_URL=https://app.example.com
+AUTH_COOKIE_DOMAIN=.example.com
+AUTH_COOKIE_SECURE=true
+PREVIEW_BASE_DOMAIN=example.com
+PREVIEW_TRUST_FORWARDED_HOSTS=false
+```
+
+The Deputies web dev server moves its own Vite HMR socket to `/__deputies_vite_hmr` so preview app WebSocket upgrades on `/` can pass through the preview proxy. For Vite apps running inside a sandbox, avoid hard-coding `server.hmr.host`, `server.hmr.clientPort`, or `server.hmr.protocol` to `localhost`; let Vite infer the preview browser URL.
+
+If you keep using plain Vite without a wildcard proxy, keep `AUTH_COOKIE_SECURE=false` and use an HTTP `WEB_BASE_URL`/`AUTH_SUCCESS_REDIRECT_URL` instead.
 
 ## Auth
 

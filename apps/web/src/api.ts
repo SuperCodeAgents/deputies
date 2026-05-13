@@ -70,6 +70,7 @@ export type ArtifactPreview = {
 export type SandboxPreview = {
   port: number;
   url: string;
+  status?: 'available' | 'unavailable' | 'unknown';
   label?: string;
   path?: string;
 };
