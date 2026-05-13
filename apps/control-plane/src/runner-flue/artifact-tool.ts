@@ -17,16 +17,16 @@ export type ArtifactToolServices = {
 
 export function createArtifactTool(services: ArtifactToolServices): ToolDef {
   return {
-    name: 'artifact_create',
+    name: 'artifact',
     description:
-      'Publish a file from the current sandbox as a durable artifact visible in the product UI. ' +
-      'Use this for screenshots, generated images, reports, large logs, and other files the user should be able to view or download. ' +
-      'Provide a sandbox file path, artifact type, and optional title/content type. Use a user-facing title such as "Generated image", "Screenshot", or "Test report", not process context like "retry attempt". Prefer kebab-case download filenames with a useful extension, such as generated-image.png, test-report.md, or run-log.txt. The tool returns an artifact ID and product download URL you can mention in your response.',
+      'Manage durable artifacts visible in the product UI. Use action=create to publish a file from the current sandbox for screenshots, generated images, reports, large logs, and other files the user should be able to view or download. ' +
+      'For create, provide a sandbox file path, artifact type, and optional title/content type. Use a user-facing title such as "Generated image", "Screenshot", or "Test report", not process context like "retry attempt". Prefer kebab-case download filenames with a useful extension, such as generated-image.png, test-report.md, or run-log.txt. The tool returns an artifact ID and product download URL you can mention in your response.',
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['path', 'type'],
+      required: ['action'],
       properties: {
+        action: { type: 'string', enum: ['create'], description: 'Artifact action to perform.' },
         path: { type: 'string', maxLength: 2_048, description: 'Path to an existing file in the sandbox.' },
         type: {
           type: 'string',
@@ -43,13 +43,15 @@ export function createArtifactTool(services: ArtifactToolServices): ToolDef {
       },
     },
     async execute(params) {
+      const action = typeof params.action === 'string' ? params.action : '';
+      if (action !== 'create') throw new Error('artifact action must be one of: create');
       const input = validateParams(params);
       if (!services.sandbox.fs) throw new Error(`Sandbox provider "${services.sandbox.provider}" does not expose files`);
 
       const stat = await services.sandbox.fs.stat(input.path);
-      if (!stat.isFile) throw new Error('artifact_create path must point to a regular file');
+      if (!stat.isFile) throw new Error('artifact create path must point to a regular file');
       if (stat.size > services.maxBytes) {
-        throw new Error(`artifact_create file exceeds max size of ${services.maxBytes} bytes`);
+        throw new Error(`artifact create file exceeds max size of ${services.maxBytes} bytes`);
       }
 
       const body = await services.sandbox.fs.readFileBuffer(input.path);
@@ -84,9 +86,9 @@ function validateParams(params: Record<string, unknown>): {
   fileName?: string;
 } {
   const filePath = readString(params.path, 'path', 2_048);
-  if (filePath.includes('\0')) throw new Error('artifact_create path cannot contain NUL bytes');
+  if (filePath.includes('\0')) throw new Error('artifact create path cannot contain NUL bytes');
   const type = readString(params.type, 'type', maxStringLength);
-  if (!allowedTypes.has(type)) throw new Error(`artifact_create type must be one of ${[...allowedTypes].join(', ')}`);
+  if (!allowedTypes.has(type)) throw new Error(`artifact create type must be one of ${[...allowedTypes].join(', ')}`);
   const result = { path: filePath, type };
   const title = readOptionalString(params.title, 'title', maxStringLength);
   const contentType = readOptionalString(params.contentType, 'contentType', 128);
@@ -98,8 +100,8 @@ function validateParams(params: Record<string, unknown>): {
 }
 
 function readString(value: unknown, name: string, maxLength: number): string {
-  if (typeof value !== 'string' || !value.trim()) throw new Error(`artifact_create ${name} must be a non-empty string`);
-  if (value.length > maxLength) throw new Error(`artifact_create ${name} cannot exceed ${maxLength} characters`);
+  if (typeof value !== 'string' || !value.trim()) throw new Error(`artifact create ${name} must be a non-empty string`);
+  if (value.length > maxLength) throw new Error(`artifact create ${name} cannot exceed ${maxLength} characters`);
   return value;
 }
 

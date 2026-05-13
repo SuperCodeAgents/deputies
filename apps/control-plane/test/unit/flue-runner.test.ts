@@ -194,7 +194,7 @@ describe('FlueRunner', () => {
     expect(eventsJson).not.toContain('ghs_secret_token');
   });
 
-  it('registers artifact_create and stores sandbox files as product artifacts', async () => {
+  it('registers artifact and stores sandbox files as product artifacts', async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'deputies-artifact-tool-'));
     try {
       const store = new MemoryStore();
@@ -205,18 +205,19 @@ describe('FlueRunner', () => {
       const events: NormalizedEvent[] = [];
       const factory: FlueAgentFactory = {
         async create(input) {
-          expect(input.tools?.map((tool) => tool.name)).toEqual(['artifact_create']);
+          expect(input.tools?.map((tool) => tool.name)).toEqual(['artifact']);
           return {
             async session() {
               return {
                 async prompt() {
-                  const tool = input.tools?.find((candidate) => candidate.name === 'artifact_create');
+                  const tool = input.tools?.find((candidate) => candidate.name === 'artifact');
                   const result = JSON.parse(
                     await tool!.execute({
-                    path: '/workspace/report.txt',
-                    type: 'report',
-                    title: 'Report',
-                    contentType: 'text/plain',
+                      action: 'create',
+                      path: '/workspace/report.txt',
+                      type: 'report',
+                      title: 'Report',
+                      contentType: 'text/plain',
                     }),
                   ) as { artifactId: string; downloadUrl: string };
                   return { text: `Created ${result.downloadUrl}` };
