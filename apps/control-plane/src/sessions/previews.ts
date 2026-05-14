@@ -17,8 +17,10 @@ export function readPreviews(context: Record<string, unknown>): PublishedPreview
     const record = item as Record<string, unknown>;
     if (!isValidPreviewPort(record.port)) continue;
     const preview: PublishedPreview = { port: record.port };
-    if (typeof record.label === 'string' && record.label.trim()) preview.label = record.label.slice(0, maxPreviewLabelLength);
-    if (typeof record.path === 'string' && isValidPreviewPath(record.path)) preview.path = record.path.slice(0, maxPreviewPathLength);
+    if (typeof record.label === 'string' && record.label.trim())
+      preview.label = record.label.slice(0, maxPreviewLabelLength);
+    if (typeof record.path === 'string' && isValidPreviewPath(record.path))
+      preview.path = record.path.slice(0, maxPreviewPathLength);
     if (typeof record.providerSandboxId === 'string' && record.providerSandboxId.trim()) {
       preview.providerSandboxId = record.providerSandboxId;
     }

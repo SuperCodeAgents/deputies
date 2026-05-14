@@ -18,7 +18,9 @@ describe('preview tool', () => {
 
     await expect(
       tool.execute({ action: 'publish', port: 5173, label: 'Vite app', path: '/dashboard' }).then(JSON.parse),
-    ).resolves.toEqual({ previews: [{ port: 5173, label: 'Vite app', path: '/dashboard', providerSandboxId: 'sandbox-1' }] });
+    ).resolves.toEqual({
+      previews: [{ port: 5173, label: 'Vite app', path: '/dashboard', providerSandboxId: 'sandbox-1' }],
+    });
     await expect(tool.execute({ action: 'list' }).then(JSON.parse)).resolves.toEqual({
       previews: [{ port: 5173, label: 'Vite app', path: '/dashboard', providerSandboxId: 'sandbox-1' }],
     });

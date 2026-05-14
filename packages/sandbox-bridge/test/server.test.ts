@@ -158,7 +158,9 @@ describe('sandbox bridge server', () => {
     if (typeof address !== 'object' || !address) throw new Error('Expected upstream address');
 
     try {
-      await expect(rawUpgrade(`/preview/${address.port}/socket?x=1`)).resolves.toContain('X-Upstream-Path: /socket?x=1');
+      await expect(rawUpgrade(`/preview/${address.port}/socket?x=1`)).resolves.toContain(
+        'X-Upstream-Path: /socket?x=1',
+      );
     } finally {
       await new Promise<void>((resolve, reject) => {
         upstream.close((error) => (error ? reject(error) : resolve()));

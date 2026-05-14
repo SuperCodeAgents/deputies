@@ -101,7 +101,8 @@ export function parsePreviewHostFromRequest(config: AppConfig, c: Context): { se
 
 export async function isAuthorizedRequest(config: AppConfig, store: AppStore, c: Context): Promise<boolean> {
   if (config.apiAuthMode === 'none') return true;
-  if (config.apiAuthMode === 'bearer') return c.req.header('authorization') === `Bearer ${requireApiBearerToken(config)}`;
+  if (config.apiAuthMode === 'bearer')
+    return c.req.header('authorization') === `Bearer ${requireApiBearerToken(config)}`;
   const authSessionId = readSessionId(c);
   return Boolean(authSessionId && (await store.getAuthUserBySession({ sessionId: authSessionId, now: new Date() })));
 }
@@ -184,7 +185,8 @@ function isAllowedDockerPreviewTarget(config: AppConfig, target: URL): boolean {
 function isLocalOrPrivateHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
   if (host === 'localhost' || host.endsWith('.localhost')) return true;
-  if (host === '0.0.0.0' || host.startsWith('127.') || host.startsWith('10.') || host.startsWith('192.168.')) return true;
+  if (host === '0.0.0.0' || host.startsWith('127.') || host.startsWith('10.') || host.startsWith('192.168.'))
+    return true;
   const parts = host.split('.').map((part) => Number(part));
   if (parts.length === 4 && parts.every((part) => Number.isInteger(part))) {
     const first = parts[0]!;
@@ -248,7 +250,10 @@ function previewHostLabel(sessionId: string, port: number): string {
   return `p-${port}-${sessionId}`;
 }
 
-function parsePreviewHost(host: string | undefined, allowedDomains?: string[]): { sessionId: string; port: number } | null {
+function parsePreviewHost(
+  host: string | undefined,
+  allowedDomains?: string[],
+): { sessionId: string; port: number } | null {
   const hostname = host?.split(':')[0]?.toLowerCase();
   if (!hostname) return null;
   if (allowedDomains?.length && !allowedDomains.some((domain) => hostname.endsWith(`.${domain}`))) return null;
@@ -260,11 +265,17 @@ function parsePreviewHost(host: string | undefined, allowedDomains?: string[]): 
   return { port, sessionId: match[2]! };
 }
 
-function parsePreviewHostFromNodeRequest(config: AppConfig, request: IncomingMessage): { sessionId: string; port: number } | null {
+function parsePreviewHostFromNodeRequest(
+  config: AppConfig,
+  request: IncomingMessage,
+): { sessionId: string; port: number } | null {
   return parsePreviewHostFromHosts(previewNodeRequestHosts(config, request), previewAllowedDomains(config, request));
 }
 
-function parsePreviewHostFromHosts(hosts: string[], allowedDomains: string[]): { sessionId: string; port: number } | null {
+function parsePreviewHostFromHosts(
+  hosts: string[],
+  allowedDomains: string[],
+): { sessionId: string; port: number } | null {
   for (const host of hosts) {
     const parsed = parsePreviewHost(host, allowedDomains);
     if (parsed) return parsed;
@@ -278,7 +289,12 @@ function previewRequestHost(config: AppConfig, c: Context): string | undefined {
 
 function previewRequestHosts(config: AppConfig, c: Context): string[] {
   return previewHeaderHosts(
-    previewHostHeaderValues(config, c.req.header('host'), c.req.header('x-forwarded-host'), c.req.header('x-original-host')),
+    previewHostHeaderValues(
+      config,
+      c.req.header('host'),
+      c.req.header('x-forwarded-host'),
+      c.req.header('x-original-host'),
+    ),
   );
 }
 
@@ -346,7 +362,8 @@ async function isAuthorizedUpgrade(
   request: IncomingMessage,
 ): Promise<boolean> {
   if (config.apiAuthMode === 'none') return true;
-  if (config.apiAuthMode === 'bearer') return request.headers.authorization === `Bearer ${requireApiBearerToken(config)}`;
+  if (config.apiAuthMode === 'bearer')
+    return request.headers.authorization === `Bearer ${requireApiBearerToken(config)}`;
   const authSessionId = parseCookieHeader(request.headers.cookie ?? '')[sessionCookieName];
   return Boolean(
     authSessionId && (await services.store.getAuthUserBySession({ sessionId: authSessionId, now: new Date() })),
@@ -394,9 +411,12 @@ function upgradeRequestHead(
 ): string {
   const headers = previewUpgradeHeaders(request, target, injected, preserveOrigin);
   const path = `${target.pathname || '/'}${target.search}`;
-  return [`${request.method ?? 'GET'} ${path} HTTP/1.1`, ...headers.map(([key, value]) => `${key}: ${value}`), '', ''].join(
-    '\r\n',
-  );
+  return [
+    `${request.method ?? 'GET'} ${path} HTTP/1.1`,
+    ...headers.map(([key, value]) => `${key}: ${value}`),
+    '',
+    '',
+  ].join('\r\n');
 }
 
 function previewUpgradeHeaders(
@@ -457,7 +477,8 @@ function previewResponseHeaders(input: Headers, sessionId: string, port: number,
   const headers = new Headers();
   for (const [key, value] of input.entries()) {
     const lower = key.toLowerCase();
-    if (['connection', 'content-encoding', 'content-length', 'set-cookie', 'transfer-encoding'].includes(lower)) continue;
+    if (['connection', 'content-encoding', 'content-length', 'set-cookie', 'transfer-encoding'].includes(lower))
+      continue;
     headers.set(key, lower === 'location' && rewriteLocations ? rewritePreviewLocation(value, sessionId, port) : value);
   }
   return headers;

@@ -98,7 +98,8 @@ export class ArtifactService {
 
     const content = artifactContentBytes(artifact);
     if (content) {
-      if (!this.objectStorage) throw new ArtifactServiceError('storage_disabled', 'Artifact object storage is disabled');
+      if (!this.objectStorage)
+        throw new ArtifactServiceError('storage_disabled', 'Artifact object storage is disabled');
       const storageKey = buildStorageKey(input.sessionId, input.runId, id, artifact.fileName);
       await this.objectStorage.put({
         key: storageKey,
@@ -231,9 +232,13 @@ function isPreviewableText(contentType: string, fileName: string, artifactType: 
 
 function isTextContentType(contentType: string): boolean {
   if (contentType.startsWith('text/')) return true;
-  return ['application/json', 'application/xml', 'application/yaml', 'application/x-yaml', 'application/javascript'].includes(
-    contentType,
-  );
+  return [
+    'application/json',
+    'application/xml',
+    'application/yaml',
+    'application/x-yaml',
+    'application/javascript',
+  ].includes(contentType);
 }
 
 function fileExtension(fileName: string): string {
@@ -255,7 +260,11 @@ function buildStorageKey(sessionId: string, runId: string, artifactId: string, f
 
 function titleFromFileName(fileName?: string): string | undefined {
   if (!fileName) return undefined;
-  const baseName = fileName.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') ?? '';
+  const baseName =
+    fileName
+      .split(/[\\/]/)
+      .pop()
+      ?.replace(/\.[^.]+$/, '') ?? '';
   const title = baseName
     .replace(/[_-]+/g, ' ')
     .replace(/\s+/g, ' ')

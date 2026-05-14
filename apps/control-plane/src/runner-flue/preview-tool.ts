@@ -29,7 +29,11 @@ export function createPreviewTool(services: PreviewToolServices): ToolDef {
         action: { type: 'string', enum: ['publish', 'unpublish', 'list'], description: 'Preview action to perform.' },
         port: { type: 'number', minimum: 1, maximum: 65535, description: 'TCP port the app listens on.' },
         label: { type: 'string', maxLength: maxPreviewLabelLength, description: 'Human-readable preview label.' },
-        path: { type: 'string', maxLength: maxPreviewPathLength, description: 'Optional path to open, for example /docs.' },
+        path: {
+          type: 'string',
+          maxLength: maxPreviewPathLength,
+          description: 'Optional path to open, for example /docs.',
+        },
       },
     },
     async execute(params) {
@@ -38,7 +42,10 @@ export function createPreviewTool(services: PreviewToolServices): ToolDef {
 
       const port = readPort(params.port);
       const current = readPreviews(services.getContext());
-      const next = action === 'publish' ? publishPreview(current, params, port, services.providerSandboxId) : unpublishPreview(current, port);
+      const next =
+        action === 'publish'
+          ? publishPreview(current, params, port, services.providerSandboxId)
+          : unpublishPreview(current, port);
       const context = { ...services.getContext(), previews: next };
       services.setContext(await services.updateSessionContext(context));
 
@@ -47,7 +54,12 @@ export function createPreviewTool(services: PreviewToolServices): ToolDef {
   };
 }
 
-function publishPreview(current: PublishedPreview[], params: Record<string, unknown>, port: number, providerSandboxId: string): PublishedPreview[] {
+function publishPreview(
+  current: PublishedPreview[],
+  params: Record<string, unknown>,
+  port: number,
+  providerSandboxId: string,
+): PublishedPreview[] {
   const preview: PublishedPreview = { port, providerSandboxId };
   const label = readOptionalString(params.label, 'label', maxPreviewLabelLength);
   const path = readOptionalPath(params.path);

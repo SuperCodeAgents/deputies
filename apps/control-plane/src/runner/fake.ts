@@ -37,7 +37,8 @@ export class FakeRunner implements Runner {
       const payload = 'payload' in artifact && isRecord(artifact.payload) ? artifact.payload : {};
       const runnerArtifact = { type, payload };
       if (url) Object.assign(runnerArtifact, { url });
-      if ('title' in artifact && typeof artifact.title === 'string') Object.assign(runnerArtifact, { title: artifact.title });
+      if ('title' in artifact && typeof artifact.title === 'string')
+        Object.assign(runnerArtifact, { title: artifact.title });
       if ('content' in artifact && typeof artifact.content === 'string')
         Object.assign(runnerArtifact, { content: artifact.content });
       if ('contentBase64' in artifact && typeof artifact.contentBase64 === 'string')

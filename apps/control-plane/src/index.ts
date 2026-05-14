@@ -39,7 +39,10 @@ const config = loadConfig(process.env);
 const store = config.appStore === 'postgres' ? new PostgresStore(requireDatabaseUrl(config)) : new MemoryStore();
 const sandboxProvider = createSandboxProvider();
 const artifactObjectStorage = config.artifactStorage === 'disabled' ? undefined : createArtifactObjectStorage(config);
-const services = createServices(store, { sandboxProvider, ...(artifactObjectStorage ? { artifactObjectStorage } : {}) });
+const services = createServices(store, {
+  sandboxProvider,
+  ...(artifactObjectStorage ? { artifactObjectStorage } : {}),
+});
 const githubClient =
   config.githubAppId || config.githubAppPrivateKey ? new GitHubClient({ apiBaseUrl: config.githubApiBaseUrl }) : null;
 const githubRepositoryAccess = githubClient ? createGitHubRepositoryAccess(githubClient) : null;

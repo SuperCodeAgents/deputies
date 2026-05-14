@@ -163,18 +163,14 @@ describe('Slack integration', () => {
     });
 
     expect(statuses).toEqual([{ channel: 'C123', threadTs: '1710000000.000100', status: '' }]);
-    expect(removedReactions).toEqual([
-      { channel: 'C123', ts: '1710000001.000100', name: 'hourglass_flowing_sand' },
-    ]);
+    expect(removedReactions).toEqual([{ channel: 'C123', ts: '1710000001.000100', name: 'hourglass_flowing_sand' }]);
     expect(addedReactions).toEqual([{ channel: 'C123', ts: '1710000001.000100', name: 'x' }]);
     expect(replies).toEqual([
       {
         channel: 'C123',
         threadTs: '1710000000.000100',
         text: ':no_entry: Execution was cancelled.',
-        blocks: [
-          { type: 'section', text: { type: 'mrkdwn', text: ':no_entry: Execution was cancelled.' } },
-        ],
+        blocks: [{ type: 'section', text: { type: 'mrkdwn', text: ':no_entry: Execution was cancelled.' } }],
       },
     ]);
   });
@@ -232,9 +228,7 @@ describe('Slack integration', () => {
       },
     });
 
-    expect(removedReactions).toEqual([
-      { channel: 'C123', ts: '1710000001.000100', name: 'hourglass_flowing_sand' },
-    ]);
+    expect(removedReactions).toEqual([{ channel: 'C123', ts: '1710000001.000100', name: 'hourglass_flowing_sand' }]);
     expect(addedReactions).toEqual([{ channel: 'C123', ts: '1710000001.000100', name: 'x' }]);
     expect(replies).toEqual([
       {
@@ -304,9 +298,7 @@ describe('Slack integration', () => {
       { channel: 'C123', ts: '1710000001.000100', name: 'hourglass_flowing_sand' },
       { channel: 'C123', ts: '1710000001.000100', name: 'white_check_mark' },
     ]);
-    expect(removedReactions).toEqual([
-      { channel: 'C123', ts: '1710000001.000100', name: 'hourglass_flowing_sand' },
-    ]);
+    expect(removedReactions).toEqual([{ channel: 'C123', ts: '1710000001.000100', name: 'hourglass_flowing_sand' }]);
   });
 
   it('creates sessions from app mentions and reuses Slack threads for follow-ups', async () => {

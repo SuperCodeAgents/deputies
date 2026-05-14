@@ -63,7 +63,11 @@ export class FilesystemArtifactObjectStorage implements ArtifactObjectStorage {
     const filePath = this.filePath(key);
     try {
       const [body, metadata] = await Promise.all([readFile(filePath), this.readMetadata(filePath)]);
-      return { body, contentLength: body.byteLength, ...(metadata.contentType ? { contentType: metadata.contentType } : {}) };
+      return {
+        body,
+        contentLength: body.byteLength,
+        ...(metadata.contentType ? { contentType: metadata.contentType } : {}),
+      };
     } catch (error) {
       if (isNotFoundError(error)) return null;
       throw error;
@@ -106,7 +110,8 @@ export class FilesystemArtifactObjectStorage implements ArtifactObjectStorage {
   private filePath(key: string): string {
     const fullPath = path.resolve(this.rootPath, key);
     const root = path.resolve(this.rootPath);
-    if (fullPath !== root && !fullPath.startsWith(`${root}${path.sep}`)) throw new Error('Invalid artifact storage key');
+    if (fullPath !== root && !fullPath.startsWith(`${root}${path.sep}`))
+      throw new Error('Invalid artifact storage key');
     return fullPath;
   }
 }

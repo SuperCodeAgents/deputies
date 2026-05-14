@@ -66,7 +66,14 @@ export const publicApiResponseSchemas = {
   },
   artifactPreview: {
     description: 'Text preview for a stored artifact.',
-    fields: { artifact: 'object', preview: 'object', text: 'string', contentType: 'string', truncated: 'boolean', sizeBytes: 'number' },
+    fields: {
+      artifact: 'object',
+      preview: 'object',
+      text: 'string',
+      contentType: 'string',
+      truncated: 'boolean',
+      sizeBytes: 'number',
+    },
   },
   callbacks: {
     description: 'Callback delivery list envelope.',

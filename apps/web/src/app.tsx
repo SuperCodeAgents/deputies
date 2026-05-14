@@ -1055,7 +1055,11 @@ export function App() {
                                   onRetryFailedMessages={retryFailedMessages}
                                   onSaveEdit={saveMessageEdit}
                                   onLoadArtifactPreview={(artifact) =>
-                                    getArtifactPreview({ sessionId: artifact.sessionId, artifactId: artifact.id, token })
+                                    getArtifactPreview({
+                                      sessionId: artifact.sessionId,
+                                      artifactId: artifact.id,
+                                      token,
+                                    })
                                   }
                                 />
                               </>

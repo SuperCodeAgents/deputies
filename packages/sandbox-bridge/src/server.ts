@@ -181,7 +181,14 @@ function upgradeRequestHead(request: IncomingMessage, target: URL): string {
   const headers: Array<[string, string]> = [['host', target.host]];
   for (const [key, value] of Object.entries(request.headers)) {
     const lower = key.toLowerCase();
-    if (lower === 'authorization' || lower === 'cookie' || lower === 'host' || lower === 'content-length' || lower === 'origin') continue;
+    if (
+      lower === 'authorization' ||
+      lower === 'cookie' ||
+      lower === 'host' ||
+      lower === 'content-length' ||
+      lower === 'origin'
+    )
+      continue;
     if (Array.isArray(value)) for (const item of value) headers.push([key, item]);
     else if (value !== undefined) headers.push([key, value]);
   }

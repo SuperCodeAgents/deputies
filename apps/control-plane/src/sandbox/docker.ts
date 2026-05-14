@@ -432,9 +432,12 @@ export class HttpDockerOrchestratorClient implements DockerOrchestrator {
   }
 
   async getPreviewUrl(input: DockerPreviewUrlInput): Promise<SandboxPreviewUrl | null> {
-    const body = readObject(await this.post(`/sandboxes/${encodeURIComponent(input.providerSandboxId)}/preview-url`, input));
+    const body = readObject(
+      await this.post(`/sandboxes/${encodeURIComponent(input.providerSandboxId)}/preview-url`, input),
+    );
     if (body.targetUrl === null) return null;
-    const headers = body.targetHeaders === undefined ? undefined : readStringRecord(body.targetHeaders, 'targetHeaders');
+    const headers =
+      body.targetHeaders === undefined ? undefined : readStringRecord(body.targetHeaders, 'targetHeaders');
     return {
       port: readNumber(body.port, 'port'),
       targetUrl: readString(body.targetUrl, 'targetUrl'),
