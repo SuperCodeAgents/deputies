@@ -17,6 +17,7 @@ import type {
 } from './types.js';
 
 const bridgePort = 3584;
+const defaultDockerCliTimeoutMs = 30_000;
 
 export const dockerCapabilities: SandboxCapabilities = {
   persistentFilesystem: true,
@@ -50,6 +51,7 @@ export type InProcessDockerOrchestratorOptions = {
   network?: string | undefined;
   memory?: string | undefined;
   cpus?: string | undefined;
+  dockerCliTimeoutMs?: number | undefined;
 };
 
 export type HttpDockerOrchestratorClientOptions = {
@@ -139,12 +141,14 @@ export class InProcessDockerOrchestrator implements DockerOrchestrator {
   private readonly image: string;
   private readonly workspacePath: string;
   private readonly bridgeHost: string;
+  private readonly dockerCliTimeoutMs: number;
   private readonly descriptors = new Map<string, DockerSandboxDescriptor>();
 
   constructor(private readonly options: InProcessDockerOrchestratorOptions = {}) {
     this.image = options.image ?? 'deputies-sandbox:local';
     this.workspacePath = options.workspacePath ?? '/workspace';
     this.bridgeHost = options.bridgeHost ?? '127.0.0.1';
+    this.dockerCliTimeoutMs = options.dockerCliTimeoutMs ?? defaultDockerCliTimeoutMs;
   }
 
   async create(input: DockerCreateSandboxInput): Promise<DockerSandboxDescriptor> {
@@ -171,7 +175,7 @@ export class InProcessDockerOrchestrator implements DockerOrchestrator {
     if (this.options.cpus) args.push('--cpus', this.options.cpus);
     args.push(this.image);
 
-    const containerId = (await docker(args)).stdout.trim();
+    const containerId = (await this.docker(args)).stdout.trim();
     try {
       const bridgeUrl = await this.bridgeUrl(containerId);
       const descriptor = this.descriptor({
@@ -230,15 +234,15 @@ export class InProcessDockerOrchestrator implements DockerOrchestrator {
   }
 
   async start(input: DockerSandboxRef): Promise<void> {
-    await docker(['start', input.providerSandboxId]);
+    await this.docker(['start', input.providerSandboxId]);
   }
 
   async stop(input: DockerSandboxRef): Promise<void> {
-    await docker(['stop', input.providerSandboxId]);
+    await this.docker(['stop', input.providerSandboxId]);
   }
 
   async destroy(input: DockerSandboxRef): Promise<void> {
-    const result = await docker(['rm', '-f', input.providerSandboxId], { allowFailure: true });
+    const result = await this.docker(['rm', '-f', input.providerSandboxId], { allowFailure: true });
     this.descriptors.delete(input.providerSandboxId);
     if (result.exitCode !== 0 && !isMissingDockerOutput(result.stderr)) throw new Error(result.stderr || result.stdout);
   }
@@ -340,7 +344,7 @@ export class InProcessDockerOrchestrator implements DockerOrchestrator {
   }
 
   private async inspect(providerSandboxId: string): Promise<{ id: string; state: string }> {
-    const result = await docker(['inspect', providerSandboxId]);
+    const result = await this.docker(['inspect', providerSandboxId]);
     const inspected = JSON.parse(result.stdout) as Array<{ Id?: string; State?: { Status?: string } }>;
     const container = inspected[0];
     if (!container?.Id) throw new Error(`Docker container not found: ${providerSandboxId}`);
@@ -348,10 +352,14 @@ export class InProcessDockerOrchestrator implements DockerOrchestrator {
   }
 
   private async bridgeUrl(providerSandboxId: string): Promise<string> {
-    const result = await docker(['port', providerSandboxId, `${bridgePort}/tcp`]);
+    const result = await this.docker(['port', providerSandboxId, `${bridgePort}/tcp`]);
     const hostPort = result.stdout.trim().split('\n')[0]?.split(':').pop();
     if (!hostPort) throw new Error(`Docker bridge port is not published for ${providerSandboxId}`);
     return `http://${this.bridgeHost}:${hostPort}`;
+  }
+
+  private docker(args: string[], options: { allowFailure?: boolean } = {}) {
+    return docker(args, { ...options, timeoutMs: this.dockerCliTimeoutMs });
   }
 }
 
@@ -636,12 +644,14 @@ async function waitForBridge(descriptor: DockerSandboxDescriptor): Promise<void>
 
 function docker(
   args: string[],
-  options: { allowFailure?: boolean } = {},
+  options: { allowFailure?: boolean; timeoutMs?: number } = {},
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   return new Promise((resolveResult, reject) => {
     const child = spawn('docker', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
+    let settled = false;
+    let timeout: NodeJS.Timeout | undefined;
     child.stdout.setEncoding('utf-8');
     child.stderr.setEncoding('utf-8');
     child.stdout.on('data', (chunk: string) => {
@@ -650,12 +660,27 @@ function docker(
     child.stderr.on('data', (chunk: string) => {
       stderr += chunk;
     });
-    child.on('error', reject);
+    const settle = (complete: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      complete();
+    };
+    timeout = options.timeoutMs
+      ? setTimeout(() => {
+          const message = `docker ${args[0] ?? ''} timed out after ${options.timeoutMs}ms`;
+          child.kill('SIGKILL');
+          if (options.allowFailure) settle(() => resolveResult({ exitCode: 1, stdout, stderr: stderr || message }));
+          else settle(() => reject(new Error(stderr || stdout || message)));
+        }, options.timeoutMs)
+      : undefined;
+    timeout?.unref?.();
+    child.on('error', (error) => settle(() => reject(error)));
     child.on('close', (code) => {
       const exitCode = code ?? 1;
       if (exitCode !== 0 && !options.allowFailure)
-        reject(new Error(stderr || stdout || `docker ${args[0] ?? ''} failed`));
-      else resolveResult({ exitCode, stdout, stderr });
+        settle(() => reject(new Error(stderr || stdout || `docker ${args[0] ?? ''} failed`)));
+      else settle(() => resolveResult({ exitCode, stdout, stderr }));
     });
   });
 }

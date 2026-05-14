@@ -12,6 +12,7 @@ const handler = createDockerOrchestratorHttpHandler(
       network: process.env.DOCKER_SANDBOX_NETWORK,
       memory: process.env.DOCKER_SANDBOX_MEMORY,
       cpus: process.env.DOCKER_SANDBOX_CPUS,
+      dockerCliTimeoutMs: parsePositiveInteger(process.env.DOCKER_CLI_TIMEOUT_MS, 30_000, 'DOCKER_CLI_TIMEOUT_MS'),
     }),
   ),
   process.env.DOCKER_ORCHESTRATOR_TOKEN,
@@ -45,6 +46,13 @@ function parsePort(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) throw new Error(`Invalid port: ${value}`);
+  return parsed;
+}
+
+function parsePositiveInteger(value: string | undefined, fallback: number, name: string): number {
+  if (!value) return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) throw new Error(`${name} must be a positive integer`);
   return parsed;
 }
 

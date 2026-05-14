@@ -29,6 +29,7 @@ export type AppConfig = {
   dockerSandboxNetwork?: string;
   dockerSandboxMemory?: string;
   dockerSandboxCpus?: string;
+  dockerCliTimeoutMs: number;
   appStore: AppStoreKind;
   apiAuthMode: ApiAuthMode;
   apiBearerToken?: string;
@@ -116,6 +117,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     dockerSandboxImage: env.DOCKER_SANDBOX_IMAGE ?? 'deputies-sandbox:local',
     dockerSandboxWorkspacePath: env.DOCKER_SANDBOX_WORKSPACE_PATH ?? '/workspace',
     dockerSandboxBridgeHost: env.DOCKER_SANDBOX_BRIDGE_HOST ?? '127.0.0.1',
+    dockerCliTimeoutMs: parsePositiveInteger(env.DOCKER_CLI_TIMEOUT_MS, 30_000, 'DOCKER_CLI_TIMEOUT_MS'),
     appStore: parseEnum(env.APP_STORE, ['memory', 'postgres'], 'memory'),
     apiAuthMode: parseRequiredEnum(env.API_AUTH_MODE, ['none', 'bearer', 'session'], 'API_AUTH_MODE'),
     authProvider: parseEnum(env.AUTH_PROVIDER, ['static', 'github'], 'static'),

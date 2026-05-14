@@ -158,22 +158,164 @@ describe('DockerSandboxProvider', () => {
       vi.resetModules();
     }
   });
+
+  it('kills Docker CLI calls and rejects when they exceed the configured timeout', async () => {
+    vi.resetModules();
+    vi.useFakeTimers();
+    const child = mockHangingDockerProcess();
+    const spawnMock = vi.fn(() => child);
+    vi.doMock('node:child_process', () => ({ spawn: spawnMock }));
+
+    try {
+      const { InProcessDockerOrchestrator: MockedInProcessDockerOrchestrator } =
+        await import('../../src/sandbox/docker.js');
+      const orchestrator = new MockedInProcessDockerOrchestrator({ dockerCliTimeoutMs: 25 });
+      const start = orchestrator.start({ providerSandboxId: 'container-1', sessionId: 'session-timeout' });
+      const rejection = expect(start).rejects.toThrow('docker start timed out after 25ms');
+
+      await vi.advanceTimersByTimeAsync(25);
+
+      await rejection;
+      expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+    } finally {
+      vi.useRealTimers();
+      vi.doUnmock('node:child_process');
+      vi.resetModules();
+    }
+  });
+
+  it('lets allowFailure Docker timeouts return a result so destroy can clean local state', async () => {
+    vi.resetModules();
+    vi.useFakeTimers();
+    const child = mockHangingDockerProcess();
+    const spawnMock = vi.fn(() => child);
+    vi.doMock('node:child_process', () => ({ spawn: spawnMock }));
+
+    try {
+      const { InProcessDockerOrchestrator: MockedInProcessDockerOrchestrator } =
+        await import('../../src/sandbox/docker.js');
+      const orchestrator = new MockedInProcessDockerOrchestrator({ dockerCliTimeoutMs: 25 });
+      const descriptor = cacheDescriptor(orchestrator, 'session-destroy-timeout');
+      const destroy = orchestrator.destroy({
+        providerSandboxId: descriptor.providerSandboxId,
+        sessionId: descriptor.sessionId,
+      });
+      const rejection = expect(destroy).rejects.toThrow('docker rm timed out after 25ms');
+
+      await vi.advanceTimersByTimeAsync(25);
+
+      await rejection;
+      expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+      expect(
+        (orchestrator as unknown as { descriptors: Map<string, DockerSandboxDescriptor> }).descriptors.has(
+          descriptor.providerSandboxId,
+        ),
+      ).toBe(false);
+    } finally {
+      vi.useRealTimers();
+      vi.doUnmock('node:child_process');
+      vi.resetModules();
+    }
+  });
+
+  it('ignores a Docker CLI close event after timeout rejection', async () => {
+    vi.resetModules();
+    vi.useFakeTimers();
+    const child = mockHangingDockerProcess();
+    const spawnMock = vi.fn(() => child);
+    vi.doMock('node:child_process', () => ({ spawn: spawnMock }));
+
+    try {
+      const { InProcessDockerOrchestrator: MockedInProcessDockerOrchestrator } =
+        await import('../../src/sandbox/docker.js');
+      const orchestrator = new MockedInProcessDockerOrchestrator({ dockerCliTimeoutMs: 25 });
+      const start = orchestrator.start({ providerSandboxId: 'container-1', sessionId: 'session-timeout' });
+      const rejection = expect(start).rejects.toThrow('docker start timed out after 25ms');
+
+      await vi.advanceTimersByTimeAsync(25);
+      child.emit('close', 0);
+
+      await rejection;
+      expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+    } finally {
+      vi.useRealTimers();
+      vi.doUnmock('node:child_process');
+      vi.resetModules();
+    }
+  });
+
+  it('passes DOCKER_CLI_TIMEOUT_MS to the split HTTP orchestrator server', async () => {
+    vi.resetModules();
+    const originalDockerCliTimeoutMs = process.env.DOCKER_CLI_TIMEOUT_MS;
+    const originalDockerOrchestratorPort = process.env.DOCKER_ORCHESTRATOR_PORT;
+    process.env.DOCKER_CLI_TIMEOUT_MS = '45000';
+    process.env.DOCKER_ORCHESTRATOR_PORT = '3586';
+
+    const server = { listen: vi.fn((_port: number, _host: string, callback: () => void) => callback()) };
+    const createServerMock = vi.fn(() => server);
+    const inProcessDockerOrchestratorMock = vi.fn(function InProcessDockerOrchestrator() {});
+    const createDockerOrchestratorHttpHandlerMock = vi.fn(() => async () => jsonResponse({ ok: true }));
+    const consoleLogMock = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    vi.doMock('node:http', () => ({ createServer: createServerMock }));
+    vi.doMock('../../src/sandbox/docker.js', () => ({
+      InProcessDockerOrchestrator: inProcessDockerOrchestratorMock,
+      createDockerOrchestratorHttpHandler: createDockerOrchestratorHttpHandlerMock,
+    }));
+
+    try {
+      await import('../../src/sandbox/docker-orchestrator-server.js');
+
+      expect(inProcessDockerOrchestratorMock).toHaveBeenCalledWith(
+        expect.objectContaining({ dockerCliTimeoutMs: 45_000 }),
+      );
+      expect(server.listen).toHaveBeenCalledWith(3586, '0.0.0.0', expect.any(Function));
+    } finally {
+      if (originalDockerCliTimeoutMs === undefined) delete process.env.DOCKER_CLI_TIMEOUT_MS;
+      else process.env.DOCKER_CLI_TIMEOUT_MS = originalDockerCliTimeoutMs;
+      if (originalDockerOrchestratorPort === undefined) delete process.env.DOCKER_ORCHESTRATOR_PORT;
+      else process.env.DOCKER_ORCHESTRATOR_PORT = originalDockerOrchestratorPort;
+      consoleLogMock.mockRestore();
+      vi.doUnmock('node:http');
+      vi.doUnmock('../../src/sandbox/docker.js');
+      vi.resetModules();
+    }
+  });
 });
 
 function mockDockerProcess(args: string[]): EventEmitter & {
   stdout: EventEmitter & { setEncoding(encoding: BufferEncoding): void };
   stderr: EventEmitter & { setEncoding(encoding: BufferEncoding): void };
+  kill(signal?: NodeJS.Signals): boolean;
 } {
   const child = new EventEmitter() as EventEmitter & {
     stdout: EventEmitter & { setEncoding(encoding: BufferEncoding): void };
     stderr: EventEmitter & { setEncoding(encoding: BufferEncoding): void };
+    kill(signal?: NodeJS.Signals): boolean;
   };
   child.stdout = Object.assign(new EventEmitter(), { setEncoding() {} });
   child.stderr = Object.assign(new EventEmitter(), { setEncoding() {} });
+  child.kill = vi.fn(() => true);
   queueMicrotask(() => {
     if (args[0] === 'run') child.stdout.emit('data', 'container-1\n');
     child.emit('close', 0);
   });
+  return child;
+}
+
+function mockHangingDockerProcess(): EventEmitter & {
+  stdout: EventEmitter & { setEncoding(encoding: BufferEncoding): void };
+  stderr: EventEmitter & { setEncoding(encoding: BufferEncoding): void };
+  kill: ReturnType<typeof vi.fn>;
+} {
+  const child = new EventEmitter() as EventEmitter & {
+    stdout: EventEmitter & { setEncoding(encoding: BufferEncoding): void };
+    stderr: EventEmitter & { setEncoding(encoding: BufferEncoding): void };
+    kill: ReturnType<typeof vi.fn>;
+  };
+  child.stdout = Object.assign(new EventEmitter(), { setEncoding() {} });
+  child.stderr = Object.assign(new EventEmitter(), { setEncoding() {} });
+  child.kill = vi.fn(() => true);
   return child;
 }
 

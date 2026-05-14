@@ -189,6 +189,7 @@ function createSandboxProvider(): SandboxProvider {
               network: config.dockerSandboxNetwork,
               memory: config.dockerSandboxMemory,
               cpus: config.dockerSandboxCpus,
+              dockerCliTimeoutMs: config.dockerCliTimeoutMs,
             }),
           );
     return new DockerSandboxProvider({ orchestrator });
