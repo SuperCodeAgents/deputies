@@ -160,4 +160,35 @@ describe('GenericWebhookService', () => {
     });
     expect(message?.context).not.toMatchObject({ repository: { owner: 'spoofed' } });
   });
+
+  it.each(['http://localhost/callback', 'http://[::ffff:127.0.0.1]/callback'])(
+    'rejects unsafe HTTP callback targets at ingress: %s',
+    async (url) => {
+      const store = new MemoryStore();
+      const services = createServices(store);
+      const now = new Date();
+      await store.createWebhookSource({
+        id: '00000000-0000-4000-8000-000000000105',
+        key: 'foo',
+        name: 'Foo',
+        enabled: true,
+        bearerToken: 'secret',
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await expect(
+        services.genericWebhooks.handle({
+          sourceKey: 'foo',
+          authorization: 'Bearer secret',
+          payload: {
+            thread: { externalId: 'thread-1' },
+            dedupeKey: 'delivery-1',
+            prompt: 'do work',
+            callback: { type: 'http', url },
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_request' });
+    },
+  );
 });

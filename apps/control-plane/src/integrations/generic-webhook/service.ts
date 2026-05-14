@@ -1,6 +1,7 @@
 import type { MessageService } from '../../messages/service.js';
 import type { SessionService } from '../../sessions/service.js';
 import type { AppStore, MessageRecord, SessionRecord, WebhookSourceRecord } from '../../store/types.js';
+import { parseHttpCallbackUrl } from '../../callbacks/service.js';
 import {
   enqueueIntegrationIngress,
   markIntegrationDeliveryProcessed,
@@ -175,8 +176,7 @@ function optionalString(value: unknown): string | undefined {
 function httpUrl(value: unknown, field: string): string {
   const raw = requiredString(value, field);
   try {
-    const url = new URL(raw);
-    if (url.protocol === 'http:' || url.protocol === 'https:') return url.toString();
+    return parseHttpCallbackUrl(raw).toString();
   } catch {
     // handled below
   }

@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
+import { isIP } from 'node:net';
 import type { EventService } from '../events/service.js';
 import type { RunnerResult } from '../runner/types.js';
 import type { CallbackDeliveryRecord, CallbackStore, ClaimedMessage } from '../store/types.js';
+
+const DEFAULT_HTTP_CALLBACK_TIMEOUT_MS = 10_000;
 
 export type CompletionCallbackType = 'http' | 'slack' | 'github';
 
@@ -179,16 +185,304 @@ export class CallbackDispatcher {
 export class HttpCompletionCallbackSender implements CompletionCallbackSender {
   readonly type = 'http';
 
+  constructor(private readonly options: HttpCompletionCallbackSenderOptions = {}) {}
+
   async deliver(callback: CompletionCallback, payload: CompletionCallbackPayload): Promise<void> {
     const url = callback.target.url;
     if (typeof url !== 'string' || !url) throw new Error('HTTP callback target is missing url');
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) throw new Error(`HTTP callback returned ${response.status}`);
+    const response = await postJsonToCallback(url, payload, this.options);
+    if (response.statusCode < 200 || response.statusCode >= 300)
+      throw new Error(`HTTP callback returned ${response.statusCode}`);
   }
+}
+
+export type HttpCompletionCallbackSenderOptions = {
+  timeoutMs?: number;
+  resolveHostname?: (hostname: string) => Promise<ResolvedAddress[]>;
+  request?: (input: ValidatedHttpCallbackRequest) => Promise<{ statusCode: number }>;
+};
+
+export type ResolvedAddress = { address: string; family: 4 | 6 };
+
+export type ValidatedHttpCallbackRequest = {
+  url: URL;
+  addresses: ResolvedAddress[];
+  body: string;
+  timeoutMs: number;
+  signal: AbortSignal;
+};
+
+export function parseHttpCallbackUrl(value: string): URL {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('HTTP callback URL is invalid');
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:')
+    throw new Error('HTTP callback URL must use http or https');
+  if (url.username || url.password) throw new Error('HTTP callback URL must not include credentials');
+  if (isBlockedHostname(url.hostname)) throw new Error('HTTP callback URL host is not allowed');
+  const literalFamily = ipFamily(url.hostname);
+  if (literalFamily && isBlockedIp(normalizeIpLiteral(url.hostname), literalFamily))
+    throw new Error('HTTP callback URL IP is not allowed');
+  return url;
+}
+
+async function postJsonToCallback(
+  rawUrl: string,
+  payload: CompletionCallbackPayload,
+  options: HttpCompletionCallbackSenderOptions,
+): Promise<{ statusCode: number }> {
+  const url = parseHttpCallbackUrl(rawUrl);
+  const timeoutMs = options.timeoutMs ?? DEFAULT_HTTP_CALLBACK_TIMEOUT_MS;
+  const abortController = new AbortController();
+  return withTimeout(
+    (async () => {
+      const addresses = await resolveSafeCallbackAddresses(url, options.resolveHostname);
+      return (options.request ?? sendHttpCallbackRequest)({
+        url,
+        addresses,
+        body: JSON.stringify(payload),
+        timeoutMs,
+        signal: abortController.signal,
+      });
+    })(),
+    timeoutMs,
+    () => abortController.abort(),
+  );
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => void): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeout = setTimeout(() => {
+      onTimeout();
+      reject(new Error('HTTP callback timed out'));
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeout) clearTimeout(timeout);
+  });
+}
+
+async function resolveSafeCallbackAddresses(
+  url: URL,
+  resolveHostname: HttpCompletionCallbackSenderOptions['resolveHostname'],
+): Promise<ResolvedAddress[]> {
+  const literalFamily = ipFamily(url.hostname);
+  const addresses = literalFamily
+    ? [{ address: normalizeIpLiteral(url.hostname), family: literalFamily }]
+    : await (resolveHostname ?? resolveCallbackHostname)(url.hostname);
+  if (!addresses.length) throw new Error('HTTP callback URL host did not resolve');
+  for (const resolved of addresses) {
+    if (isBlockedIp(resolved.address, resolved.family))
+      throw new Error('HTTP callback URL resolved to a blocked IP range');
+  }
+  return addresses;
+}
+
+async function resolveCallbackHostname(hostname: string): Promise<ResolvedAddress[]> {
+  return lookup(hostname, { all: true, verbatim: true }) as Promise<ResolvedAddress[]>;
+}
+
+function sendHttpCallbackRequest(input: ValidatedHttpCallbackRequest): Promise<{ statusCode: number }> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const request = (input.url.protocol === 'https:' ? httpsRequest : httpRequest)(
+      {
+        protocol: input.url.protocol,
+        hostname: input.url.hostname,
+        port: input.url.port,
+        path: `${input.url.pathname}${input.url.search}`,
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(input.body),
+        },
+        timeout: input.timeoutMs,
+        lookup: createPinnedLookup(input.addresses),
+      },
+      (response) => {
+        response.resume();
+        response.on('end', () => {
+          const statusCode = response.statusCode ?? 0;
+          if (statusCode >= 300 && statusCode < 400) fail(new Error('HTTP callback redirects are not allowed'));
+          else succeed({ statusCode });
+        });
+      },
+    );
+
+    const timeoutError = () => new Error('HTTP callback timed out');
+    const cleanup = () => input.signal.removeEventListener('abort', abortRequest);
+    const succeed = (response: { statusCode: number }) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(response);
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const abortRequest = () => {
+      const error = timeoutError();
+      request.destroy(error);
+      fail(error);
+    };
+
+    input.signal.addEventListener('abort', abortRequest, { once: true });
+    request.on('timeout', () => request.destroy(timeoutError()));
+    request.on('error', fail);
+    if (input.signal.aborted) {
+      abortRequest();
+      return;
+    }
+    request.end(input.body);
+  });
+}
+
+function createPinnedLookup(addresses: ResolvedAddress[]) {
+  return (
+    _hostname: string,
+    _options: unknown,
+    callback: (error: NodeJS.ErrnoException | null, address: string, family: number) => void,
+  ) => {
+    const address = addresses[0]!;
+    callback(null, address.address, address.family);
+  };
+}
+
+function isBlockedHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/\.$/, '');
+  return (
+    normalized === 'localhost' ||
+    normalized.endsWith('.localhost') ||
+    normalized === 'metadata' ||
+    normalized === 'metadata.google.internal' ||
+    normalized === 'instance-data' ||
+    normalized === 'instance-data.ec2.internal'
+  );
+}
+
+function ipFamily(hostname: string): 4 | 6 | 0 {
+  const family = isIP(normalizeIpLiteral(hostname));
+  return family === 4 || family === 6 ? family : 0;
+}
+
+function normalizeIpLiteral(hostname: string): string {
+  return hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
+}
+
+function isBlockedIp(address: string, family: 4 | 6): boolean {
+  if (family === 4) return !isGlobalIpv4(address);
+  return isBlockedIpv6(address);
+}
+
+function isGlobalIpv4(address: string): boolean {
+  const bytes = ipv4Bytes(address);
+  if (!bytes) return false;
+  const isBlocked = (<Array<[number, number]>>[
+    [ipv4Range(0, 0, 0, 0), 8],
+    [ipv4Range(10, 0, 0, 0), 8],
+    [ipv4Range(100, 64, 0, 0), 10],
+    [ipv4Range(127, 0, 0, 0), 8],
+    [ipv4Range(169, 254, 0, 0), 16],
+    [ipv4Range(172, 16, 0, 0), 12],
+    [ipv4Range(192, 0, 0, 0), 24],
+    [ipv4Range(192, 0, 2, 0), 24],
+    [ipv4Range(192, 88, 99, 0), 24],
+    [ipv4Range(192, 168, 0, 0), 16],
+    [ipv4Range(198, 18, 0, 0), 15],
+    [ipv4Range(198, 51, 100, 0), 24],
+    [ipv4Range(203, 0, 113, 0), 24],
+    [ipv4Range(224, 0, 0, 0), 4],
+    [ipv4Range(240, 0, 0, 0), 4],
+  ]).some(([range, bits]) => ipv4InCidr(bytes, range, bits));
+  return !isBlocked;
+}
+
+function isBlockedIpv6(address: string): boolean {
+  const normalized = address.toLowerCase();
+  const bytes = ipv6Bytes(normalized);
+  if (!bytes) return true;
+  const mappedIpv4 = ipv4FromMappedIpv6(bytes);
+  if (mappedIpv4) return !isGlobalIpv4(mappedIpv4);
+  return !isGlobalIpv6(bytes);
+}
+
+function isGlobalIpv6(bytes: number[]): boolean {
+  return (
+    ipv6InCidr(bytes, [0x20, 0x00], 3) &&
+    !(<Array<[number[], number]>>[
+      [[0x20, 0x01], 23],
+      [[0x20, 0x01, 0x00, 0x02], 48],
+      [[0x20, 0x01, 0x0d, 0xb8], 32],
+      [[0x20, 0x02], 16],
+      [[0x3f, 0xfe], 16],
+    ]).some(([range, bits]) => ipv6InCidr(bytes, range, bits))
+  );
+}
+
+function ipv4Bytes(address: string): [number, number, number, number] | null {
+  const parts = address.split('.').map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return null;
+  return parts as [number, number, number, number];
+}
+
+function ipv4InCidr(bytes: [number, number, number, number], range: number, bits: number): boolean {
+  const value = bytes.reduce((acc, byte) => acc * 256 + byte, 0);
+  return Math.floor(value / 2 ** (32 - bits)) === Math.floor(range / 2 ** (32 - bits));
+}
+
+function ipv4Range(a: number, b: number, c: number, d: number): number {
+  return ((a * 256 + b) * 256 + c) * 256 + d;
+}
+
+function ipv6InCidr(bytes: number[], range: number[], bits: number): boolean {
+  const fullBytes = Math.floor(bits / 8);
+  for (let index = 0; index < fullBytes; index += 1) {
+    if (bytes[index] !== range[index]) return false;
+  }
+  const remainingBits = bits % 8;
+  if (!remainingBits) return true;
+  const mask = 0xff << (8 - remainingBits);
+  return (bytes[fullBytes]! & mask) === ((range[fullBytes] ?? 0) & mask);
+}
+
+function ipv4FromMappedIpv6(bytes: number[]): string | null {
+  if (!bytes.slice(0, 10).every((byte) => byte === 0) || bytes[10] !== 0xff || bytes[11] !== 0xff) return null;
+  return `${bytes[12]}.${bytes[13]}.${bytes[14]}.${bytes[15]}`;
+}
+
+function ipv6Bytes(address: string): number[] | null {
+  const ipv4Match = address.match(/(?<ipv4>\d+\.\d+\.\d+\.\d+)$/);
+  let normalized = address;
+  if (ipv4Match?.groups?.ipv4) {
+    const parts = ipv4Match.groups.ipv4.split('.').map((part) => Number(part));
+    if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return null;
+    normalized = address.replace(
+      ipv4Match.groups.ipv4,
+      `${((parts[0]! << 8) | parts[1]!).toString(16)}:${((parts[2]! << 8) | parts[3]!).toString(16)}`,
+    );
+  }
+  const [head = '', tail = ''] = normalized.split('::');
+  if (normalized.split('::').length > 2) return null;
+  const headParts = head ? head.split(':') : [];
+  const tailParts = tail ? tail.split(':') : [];
+  const missing = 8 - headParts.length - tailParts.length;
+  if (missing < 0 || (!normalized.includes('::') && missing !== 0)) return null;
+  const groups = [...headParts, ...Array(missing).fill('0'), ...tailParts];
+  if (groups.length !== 8) return null;
+  const bytes: number[] = [];
+  for (const group of groups) {
+    if (!/^[0-9a-f]{1,4}$/i.test(group)) return null;
+    const value = Number.parseInt(group, 16);
+    bytes.push(value >> 8, value & 0xff);
+  }
+  return bytes;
 }
 
 function getCompletionCallback(context: Record<string, unknown> | undefined): CompletionCallback | null {
