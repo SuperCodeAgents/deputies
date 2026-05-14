@@ -2,6 +2,8 @@ import type { Context } from 'hono';
 import type { EventService } from '../events/service.js';
 import type { EventRecord } from '../store/types.js';
 
+const sseWriteQueueHighWater = 256;
+
 export async function writeSessionEventStream(
   c: Context,
   events: EventService,
@@ -47,32 +49,76 @@ async function writeEventStream(
   const encoder = new TextEncoder();
   let cursor = options.after;
   let closed = false;
+  let replaying = options.replay !== false;
+  let queuedWrites = 0;
   let writeQueue: Promise<void> = Promise.resolve();
+  let liveBuffer: EventRecord[] = [];
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   let unsubscribe: (() => void) | undefined;
 
-  const cleanup = () => {
+  const cleanup = (abortWriter = false) => {
     if (closed) return;
     closed = true;
     if (heartbeat) clearInterval(heartbeat);
     unsubscribe?.();
+    if (abortWriter) {
+      writer.abort().catch(() => {});
+      return;
+    }
     writer.close().catch(() => {});
   };
 
   const write = (chunk: string): Promise<void> => {
     if (closed) return Promise.resolve();
+    if (queuedWrites >= sseWriteQueueHighWater) {
+      cleanup(true);
+      return Promise.reject(new Error('SSE client write queue exceeded high-water mark'));
+    }
+
+    queuedWrites += 1;
     const nextWrite = writeQueue.then(async () => {
       if (!closed) await writer.write(encoder.encode(chunk));
     });
     writeQueue = nextWrite.catch(() => {});
-    nextWrite.catch(cleanup);
+    nextWrite.then(
+      () => {
+        queuedWrites -= 1;
+      },
+      () => {
+        queuedWrites -= 1;
+      },
+    );
+    nextWrite.catch(() => cleanup());
     return nextWrite;
   };
-  const writeEvent = (event: EventRecord) => {
+
+  const eventFrame = (eventId: number, event: EventRecord) =>
+    `id: ${eventId}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+
+  const emitEvent = (event: EventRecord): void => {
     const eventId = options.id(event);
     if (eventId <= cursor || closed) return;
     cursor = eventId;
-    write(`id: ${eventId}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).catch(() => {});
+    write(eventFrame(eventId, event)).catch(() => {});
+  };
+  const emitEventAndDrain = async (event: EventRecord): Promise<void> => {
+    const eventId = options.id(event);
+    if (eventId <= cursor || closed) return;
+    cursor = eventId;
+    await write(eventFrame(eventId, event));
+  };
+  const writeEvent = (event: EventRecord) => {
+    if (closed) return;
+    if (replaying) {
+      if (liveBuffer.length >= sseWriteQueueHighWater) {
+        cleanup(true);
+        return;
+      }
+      liveBuffer.push(event);
+      return;
+    }
+
+    emitEvent(event);
   };
 
   unsubscribe = options.subscribe(writeEvent);
@@ -80,15 +126,21 @@ async function writeEventStream(
     write(': keep-alive\n\n').catch(() => {});
   }, 15_000);
 
-  c.req.raw.signal.addEventListener('abort', cleanup, { once: true });
+  c.req.raw.signal.addEventListener('abort', () => cleanup(), { once: true });
 
   void (async () => {
     try {
       await write(': connected\n\n');
       if (options.replay !== false) {
         for (const event of await options.list()) {
-          writeEvent(event);
+          await emitEventAndDrain(event);
         }
+      }
+      replaying = false;
+      const bufferedEvents = liveBuffer;
+      liveBuffer = [];
+      for (const event of bufferedEvents) {
+        emitEvent(event);
       }
     } catch {
       cleanup();
