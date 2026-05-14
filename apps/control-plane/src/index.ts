@@ -167,6 +167,9 @@ installProcessShutdownHandlers(new AppLifecycle(lifecycleOptions));
 function createSandboxProvider(): SandboxProvider {
   if (config.sandboxProvider === 'fake') return new FakeSandboxProvider();
   if (config.sandboxProvider === 'local') {
+    console.warn(
+      'WARNING: SANDBOX_PROVIDER=local is not a security boundary. Agent commands run on the API/worker host runtime; use only for trusted local development.',
+    );
     return new LocalSandboxProvider(
       config.localSandboxAllowedCommands.length ? { allowedCommands: config.localSandboxAllowedCommands } : {},
     );
