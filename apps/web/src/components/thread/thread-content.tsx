@@ -159,8 +159,8 @@ function UserMessageCard(props: {
   const { message } = props;
   return (
     <Card className="border-primary/50 bg-primary/10 p-3" role="article" aria-label={`Message ${message.sequence}`}>
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <h3 className="text-xs font-medium text-muted-foreground">
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="min-w-0 text-xs font-medium text-muted-foreground">
           {messageLabel(message)}{message.authorName ? ` from ${message.authorName}` : ''}{' '}
           <Badge className={statusTextClass(message.status)}>{messageStatusLabel(message)}</Badge>
         </h3>
@@ -477,14 +477,15 @@ function FailureAnalysisNotice(props: { analysis: DiagnosticFailureAnalysis }) {
 function CancelRunButton(props: { cancelling: boolean; onCancelRun: () => void }) {
   return (
     <Button
-      className="h-7 px-2"
+      className="h-7 shrink-0 whitespace-nowrap px-2"
       type="button"
       variant="secondary"
       size="sm"
       onClick={props.onCancelRun}
       disabled={props.cancelling}
+      aria-label={props.cancelling ? 'Cancelling...' : 'Cancel task'}
     >
-      <X className="h-3.5 w-3.5" /> {props.cancelling ? 'Cancelling...' : 'Cancel task'}
+      <X className="h-3.5 w-3.5 shrink-0" /> {props.cancelling ? 'Cancelling' : 'Cancel'}
     </Button>
   );
 }
