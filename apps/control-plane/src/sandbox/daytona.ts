@@ -153,8 +153,11 @@ export class DaytonaSandboxProvider implements SandboxProvider {
   async refreshKeepalive(input: SandboxRef & { durationMs: number }): Promise<void> {
     const sandbox = await this.client.get(input.providerSandboxId);
     const requestedMinutes = Math.max(1, Math.ceil(input.durationMs / 60_000));
-    const fallbackMinutes = this.options.idleTimeoutMs ? Math.max(1, Math.ceil(this.options.idleTimeoutMs / 60_000)) : 0;
-    if (sandbox.setAutostopInterval && requestedMinutes > fallbackMinutes) await sandbox.setAutostopInterval(requestedMinutes);
+    const fallbackMinutes = this.options.idleTimeoutMs
+      ? Math.max(1, Math.ceil(this.options.idleTimeoutMs / 60_000))
+      : 0;
+    if (sandbox.setAutostopInterval && requestedMinutes > fallbackMinutes)
+      await sandbox.setAutostopInterval(requestedMinutes);
     await sandbox.refreshActivity?.();
   }
 

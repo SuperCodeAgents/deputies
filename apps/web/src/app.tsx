@@ -171,7 +171,8 @@ export function App() {
   );
   const selectedRepository = repositoryLabel(selectedSession?.context?.repository);
   const selectedSessionModel = typeof selectedSession?.context?.model === 'string' ? selectedSession.context.model : '';
-  const selectedSessionBranch = typeof selectedSession?.context?.branch === 'string' ? selectedSession.context.branch : '';
+  const selectedSessionBranch =
+    typeof selectedSession?.context?.branch === 'string' ? selectedSession.context.branch : '';
   const selectedSessionArchived = selectedSession?.status === 'archived';
   const selectedSessionDetailLoading = Boolean(selectedSessionId && detailLoadedSessionId !== selectedSessionId);
   const sortedSessions = useMemo(() => sortSessionsByLastActivity(sessions), [sessions]);
@@ -1077,10 +1078,7 @@ export function App() {
   }
 
   return (
-    <main
-      ref={appShellRef}
-      className="flex h-screen flex-col overflow-hidden bg-background text-foreground"
-    >
+    <main ref={appShellRef} className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
       {error ? (
         <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
           {error}

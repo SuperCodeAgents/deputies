@@ -353,7 +353,11 @@ export function createApp(config: AppConfig, services = createServices()) {
   });
 
   app.get('/models', async (c) => {
-    const models = config.flueModelOptions.length ? config.flueModelOptions : config.flueModel ? [config.flueModel] : [];
+    const models = config.flueModelOptions.length
+      ? config.flueModelOptions
+      : config.flueModel
+        ? [config.flueModel]
+        : [];
     return c.json({ models, defaultModel: config.flueModel ?? models[0] ?? null });
   });
 

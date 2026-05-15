@@ -124,7 +124,8 @@ export class SandboxKeepaliveService {
 
     const durationMs = input.durationMs;
     const now = new Date();
-    const baseTime = sandbox.keepaliveUntil && sandbox.keepaliveUntil > now ? sandbox.keepaliveUntil.getTime() : now.getTime();
+    const baseTime =
+      sandbox.keepaliveUntil && sandbox.keepaliveUntil > now ? sandbox.keepaliveUntil.getTime() : now.getTime();
     const maxUntilMs = now.getTime() + input.maxDurationMs;
     const requestedUntilMs = baseTime + durationMs;
     const keepaliveUntil = new Date(Math.min(requestedUntilMs, maxUntilMs));
@@ -150,7 +151,10 @@ export class SandboxKeepaliveService {
     return { record: updated, keepaliveUntil: updated.keepaliveUntil!, providerSync };
   }
 
-  private async syncProviderKeepalive(record: SandboxRecord, durationMs: number): Promise<SandboxKeepaliveResult['providerSync']> {
+  private async syncProviderKeepalive(
+    record: SandboxRecord,
+    durationMs: number,
+  ): Promise<SandboxKeepaliveResult['providerSync']> {
     if (!this.provider.refreshKeepalive) return 'not_supported';
     try {
       await this.provider.refreshKeepalive({

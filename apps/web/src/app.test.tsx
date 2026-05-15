@@ -1854,7 +1854,9 @@ function mockApi(options: MockApiOptions = {}) {
 
     if (url.pathname === '/repositories' && method === 'GET') {
       return jsonResponse({
-        repositories: options.repositories ?? [{ fullName: 'owner/repo', owner: 'owner', name: 'repo', defaultBranch: 'main' }],
+        repositories: options.repositories ?? [
+          { fullName: 'owner/repo', owner: 'owner', name: 'repo', defaultBranch: 'main' },
+        ],
       });
     }
 

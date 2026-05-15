@@ -22,8 +22,11 @@ export class GitHubRepositoryAccessService {
   private readonly now: () => Date;
   private readonly tokensByRepository = new Map<string, GitHubInstallationToken>();
   private readonly installationsByRepository = new Map<string, number>();
-  private repositoriesCache: { repositories: GitHubInstallationRepository[]; freshUntil: number; staleUntil: number } | null =
-    null;
+  private repositoriesCache: {
+    repositories: GitHubInstallationRepository[];
+    freshUntil: number;
+    staleUntil: number;
+  } | null = null;
   private readonly branchesByRepository = new Map<
     string,
     { branches: Array<{ name: string }>; freshUntil: number; staleUntil: number }
