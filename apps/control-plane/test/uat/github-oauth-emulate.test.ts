@@ -82,9 +82,12 @@ describe('GitHub OAuth emulate UAT', () => {
       expect(appCallbackLocation).toContain(`${baseUrl}/auth/oauth/github/callback`);
 
       const appCallback = await fetch(appCallbackLocation!, { redirect: 'manual' });
-      expect(appCallback.status).toBe(302);
+      expect(appCallback.status).toBe(200);
       const sessionCookie = appCallback.headers.get('set-cookie');
       expect(sessionCookie).toContain('dev_deputies_session=');
+      const callbackHtml = await appCallback.text();
+      expect(callbackHtml).toContain('Sign in complete');
+      expect(callbackHtml).toContain('Redirecting to the app');
 
       const me = await fetch(`${baseUrl}/auth/me`, { headers: { cookie: sessionCookie! } });
       expect(me.status).toBe(200);
