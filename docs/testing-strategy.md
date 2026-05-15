@@ -79,6 +79,7 @@ Current local policy:
 - `pnpm control-plane:test:uat` runs built-artifact UAT tests from `apps/control-plane/test/uat` and requires `TEST_DATABASE_URL` plus a prior `pnpm control-plane:build`.
 - `pnpm web:test` runs the Vite/jsdom operator UI regression tests.
 - `pnpm web:e2e` runs Playwright browser tests such as responsive context-panel coverage.
+- `pnpm smoke:full-stack` is an opt-in Docker smoke that builds the local Postgres, SeaweedFS, built control-plane, and built web/Caddy stack, then drives Playwright through Caddy. It verifies deployed-style API proxying for browser routes such as `/repositories` and `/models` plus basic session creation against Postgres.
 - `pnpm check` runs API typecheck/tests and web typecheck/jsdom tests; it does not run Playwright E2E tests.
 - Real local Flue UAT is opt-in: set `RUN_REAL_LOCAL_FLUE_UAT=true`, `API_AUTH_MODE=none`, `FLUE_MODEL`, and the model provider credentials required by that model before running `pnpm --dir apps/control-plane exec vitest run --config vitest.uat.config.ts test/uat/real-local-flue.test.ts`.
 - Real Docker sandbox UAT is opt-in: build `deputies-sandbox:local`, set `RUN_REAL_DOCKER_SANDBOX_UAT=true`, and run `pnpm --dir apps/control-plane exec vitest run --config vitest.uat.config.ts test/uat/real-docker-sandbox.test.ts` to verify create, stop/start, reconnect, bridge exec/fs, live preview proxying, and cleanup against a real Docker daemon.

@@ -223,7 +223,9 @@ function optional<T extends Record<string, unknown>>(input: T): T {
 }
 
 async function createRunner(): Promise<Runner> {
-  if (config.runner === 'fake') return new FakeRunner();
+  if (config.runner === 'fake') {
+    return new FakeRunner(config.fakeRunnerArtifact ? { artifact: config.fakeRunnerArtifact } : {});
+  }
 
   const model = requireFlueModel(config);
   const options: RealFlueAgentFactoryOptions = {

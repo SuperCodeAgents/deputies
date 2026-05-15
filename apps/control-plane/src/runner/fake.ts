@@ -1,6 +1,8 @@
 import type { Runner, RunnerInput, RunnerResult } from './types.js';
 
 export class FakeRunner implements Runner {
+  constructor(private readonly options: { artifact?: Record<string, unknown> } = {}) {}
+
   async run(input: RunnerInput): Promise<RunnerResult> {
     await input.emit({
       sessionId: input.sessionId,
@@ -30,7 +32,7 @@ export class FakeRunner implements Runner {
     });
 
     const result: RunnerResult = { text: `Fake response for: ${input.prompt}` };
-    const artifact = input.context.fakeArtifact ?? getNestedFakeArtifact(input.context);
+    const artifact = input.context.fakeArtifact ?? getNestedFakeArtifact(input.context) ?? this.options.artifact;
     if (artifact && typeof artifact === 'object' && !Array.isArray(artifact)) {
       const type = 'type' in artifact && typeof artifact.type === 'string' ? artifact.type : 'external_link';
       const url = 'url' in artifact && typeof artifact.url === 'string' ? artifact.url : undefined;

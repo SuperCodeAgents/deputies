@@ -75,6 +75,7 @@ export type AppConfig = {
   flueOpenaiCodexAuthFile?: string;
   flueOpenaiCodexAuthJson?: string;
   flueOpenaiCodexAuthBase64?: string;
+  fakeRunnerArtifact?: Record<string, unknown>;
   daytonaApiKey?: string;
   daytonaApiUrl?: string;
   daytonaTarget?: string;
@@ -212,6 +213,9 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   if (env.FLUE_OPENAI_CODEX_AUTH_FILE) config.flueOpenaiCodexAuthFile = env.FLUE_OPENAI_CODEX_AUTH_FILE;
   if (env.FLUE_OPENAI_CODEX_AUTH_JSON) config.flueOpenaiCodexAuthJson = env.FLUE_OPENAI_CODEX_AUTH_JSON;
   if (env.FLUE_OPENAI_CODEX_AUTH_BASE64) config.flueOpenaiCodexAuthBase64 = env.FLUE_OPENAI_CODEX_AUTH_BASE64;
+  if (env.FAKE_RUNNER_ARTIFACT_JSON) {
+    config.fakeRunnerArtifact = parseJsonRecord(env.FAKE_RUNNER_ARTIFACT_JSON, 'FAKE_RUNNER_ARTIFACT_JSON');
+  }
   if (env.DOCKER_ORCHESTRATOR_URL) config.dockerOrchestratorUrl = env.DOCKER_ORCHESTRATOR_URL;
   if (env.DOCKER_ORCHESTRATOR_TOKEN) config.dockerOrchestratorToken = env.DOCKER_ORCHESTRATOR_TOKEN;
   if (env.DOCKER_SANDBOX_NETWORK) config.dockerSandboxNetwork = env.DOCKER_SANDBOX_NETWORK;
@@ -434,7 +438,21 @@ function parseStringList(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
-function deriveFlueModelOptions(env: NodeJS.ProcessEnv, explicitOptions: string[], defaultModel: string | undefined): string[] {
+function parseJsonRecord(value: string, name: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+  } catch {
+    // Fall through to the typed configuration error below.
+  }
+  throw new Error(`${name} must be a JSON object`);
+}
+
+function deriveFlueModelOptions(
+  env: NodeJS.ProcessEnv,
+  explicitOptions: string[],
+  defaultModel: string | undefined,
+): string[] {
   const derived = explicitOptions.length ? explicitOptions : providerDerivedFlueModels(env);
   return dedupeStrings(defaultModel ? [defaultModel, ...derived] : derived);
 }

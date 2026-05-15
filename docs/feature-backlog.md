@@ -89,6 +89,7 @@ This is a living backlog for product, integration, runtime, and operations work.
 
 - Emulate-backed Slack callback tests in regular CI if reliable.
 - Emulate-backed GitHub integration tests once the GitHub App JWT emulator caveat is resolved upstream.
+- Opt-in credentialed UAT for real Flue runner, sandbox provider, model credentials, and artifact-tool creation/download, separate from the deterministic fake-runner full-stack smoke.
 - Real-provider smoke tests for Daytona on a schedule.
 - Load profiles for session listing, event replay, SSE fanout, and worker throughput.
 - Contract schemas for public API responses and normalized events.
