@@ -28,6 +28,7 @@ This is a living backlog for product, integration, runtime, and operations work.
 - Pin/favorite sessions.
 - Better run and sandbox status in the context panel.
 - Preview URL cards in the context panel, with source, expiry/status, and quick-open/copy actions.
+- Serve previews from a separate site/eTLD+1 and keep preview auth isolation strong, rather than relying on same-site cookies across the app and preview wildcard.
 - Surface sandbox cleanup events and failures more clearly.
 - Expand callback delivery UI with filtering and clearer retry/failure history.
 - Improve archived-session browsing and bulk cleanup.

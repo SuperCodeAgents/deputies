@@ -4,6 +4,9 @@ import type { AppConfig } from '../config/index.js';
 import type { AppStore } from '../store/types.js';
 import { readSessionId } from './session.js';
 
+const unsafeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const trustedDevOrigins = new Set(['http://localhost:5173', 'http://127.0.0.1:5173']);
+
 export function apiAuthMiddleware(config: AppConfig, store: AppStore): MiddlewareHandler {
   return async (c, next) => {
     if (config.apiAuthMode === 'none') {
@@ -15,6 +18,7 @@ export function apiAuthMiddleware(config: AppConfig, store: AppStore): Middlewar
       const sessionId = readSessionId(c);
       const user = sessionId ? await store.getAuthUserBySession({ sessionId, now: new Date() }) : null;
       if (!user) return writeAuthError(c, 'Missing or invalid session');
+      if (!isTrustedCookieAuthRequest(c, config)) return writeCsrfError(c);
       await next();
       return;
     }
@@ -30,4 +34,26 @@ export function apiAuthMiddleware(config: AppConfig, store: AppStore): Middlewar
 
 function writeAuthError(c: Context, message: string) {
   return c.json({ error: 'unauthorized', message }, 401);
+}
+
+function writeCsrfError(c: Context) {
+  return c.json({ error: 'forbidden', message: 'Untrusted browser request' }, 403);
+}
+
+export function isTrustedCookieAuthRequest(c: Context, config: AppConfig): boolean {
+  if (!unsafeMethods.has(c.req.method.toUpperCase())) return true;
+
+  const secFetchSite = c.req.header('sec-fetch-site')?.toLowerCase();
+  if (secFetchSite === 'cross-site') return false;
+
+  const origin = c.req.header('origin');
+  if (!origin) return true;
+  return trustedOrigins(c, config).has(origin);
+}
+
+function trustedOrigins(c: Context, config: AppConfig): Set<string> {
+  const origins = new Set(trustedDevOrigins);
+  origins.add(new URL(c.req.url).origin);
+  if (config.webBaseUrl) origins.add(new URL(config.webBaseUrl).origin);
+  return origins;
 }

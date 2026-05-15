@@ -95,7 +95,7 @@ The UI supports all product API auth modes exposed by `/health`:
 
 `API_AUTH_MODE` is required. Use `API_AUTH_MODE=none` only for intentional local or test no-auth runs; production-like deployments should use `bearer` or `session`.
 
-Session-cookie auth is an API access gate only. Product sessions remain multiplayer/shared by default: authenticated users can list and open the same global session set, and sessions are not currently owned by or filtered to the authenticated user.
+Session-cookie auth is an API access gate only. Product sessions remain multiplayer/shared by default: authenticated users can list and open the same global session set, and sessions are not currently owned by, filtered to, or authorized per authenticated user. Treat per-user session ownership/authorization as future work for a comprehensive users/organizations/RBAC push rather than a narrow session-only patch.
 
 Local static session-auth example:
 

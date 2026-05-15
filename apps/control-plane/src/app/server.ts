@@ -7,7 +7,7 @@ import { cors } from 'hono/cors';
 import { ArtifactService, ArtifactServiceError } from '../artifacts/service.js';
 import type { ArtifactObjectStorage } from '../artifacts/storage.js';
 import { FetchGitHubOAuthClient, type GitHubOAuthClient } from '../auth/github.js';
-import { apiAuthMiddleware } from '../auth/middleware.js';
+import { apiAuthMiddleware, isTrustedCookieAuthRequest } from '../auth/middleware.js';
 import { oauthSuccessHtml } from '../auth/oauth-success-page.js';
 import {
   clearSessionCookie,
@@ -244,6 +244,9 @@ export function createApp(config: AppConfig, services = createServices()) {
   app.post('/auth/logout', async (c) => {
     if (config.apiAuthMode === 'session') {
       const sessionId = readSessionId(c);
+      if (sessionId && !isTrustedCookieAuthRequest(c, config)) {
+        return writeError(c, 403, 'forbidden', 'Untrusted browser request');
+      }
       if (sessionId) await services.store.deleteAuthSession(sessionId);
       c.header('set-cookie', clearSessionCookie(config));
     }
@@ -618,14 +621,14 @@ export function createApp(config: AppConfig, services = createServices()) {
 
     try {
       const download = await services.artifacts.getDownload({ sessionId, artifactId: c.req.param('artifactId') });
+      const disposition = artifactDownloadDisposition(download.contentType, c.req.query('disposition'));
       const headers: Record<string, string> = {
         'content-type': download.contentType,
         'content-length': String(download.body.byteLength),
-        'content-disposition': contentDisposition(
-          download.fileName,
-          c.req.query('disposition') === 'inline' ? 'inline' : 'attachment',
-        ),
+        'content-disposition': contentDisposition(download.fileName, disposition),
+        'x-content-type-options': 'nosniff',
       };
+      if (disposition === 'inline') headers['content-security-policy'] = inlineArtifactContentSecurityPolicy;
       return new Response(download.body, { headers });
     } catch (error) {
       if (error instanceof ArtifactServiceError && error.code === 'not_found')
@@ -767,6 +770,30 @@ function contentDisposition(fileName: string, disposition: 'attachment' | 'inlin
     .slice(0, 120);
   const safeFallback = fallback || 'artifact';
   return `${disposition}; filename="${safeFallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+}
+
+const inlineArtifactContentSecurityPolicy =
+  "default-src 'none'; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox";
+
+const inlineArtifactContentTypes = new Set([
+  'text/plain',
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'image/avif',
+]);
+
+function artifactDownloadDisposition(
+  contentType: string,
+  requestedDisposition: string | undefined,
+): 'attachment' | 'inline' {
+  if (requestedDisposition !== 'inline') return 'attachment';
+  return inlineArtifactContentTypes.has(normalizeContentType(contentType)) ? 'inline' : 'attachment';
+}
+
+function normalizeContentType(contentType: string): string {
+  return contentType.split(';')[0]?.trim().toLowerCase() ?? '';
 }
 
 function requestIdMiddleware(): MiddlewareHandler<{ Variables: AppVariables }> {

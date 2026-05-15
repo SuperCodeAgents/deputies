@@ -90,6 +90,18 @@ describe('core API', () => {
     const validAuth = await postJson(`${baseUrl}/sessions`, { title: 'Private' }, 'secret');
     expect(validAuth.status).toBe(201);
     expectSessionResponse(await validAuth.json());
+
+    const validAuthWithUntrustedBrowserHeaders = await fetch(`${baseUrl}/sessions`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer secret',
+        'content-type': 'application/json',
+        origin: 'https://evil.example',
+        'sec-fetch-site': 'cross-site',
+      },
+      body: JSON.stringify({ title: 'Bearer remains token authenticated' }),
+    });
+    expect(validAuthWithUntrustedBrowserHeaders.status).toBe(201);
   });
 
   it('supports static login with session cookies', async () => {
@@ -120,13 +132,42 @@ describe('core API', () => {
     expect(me.status).toBe(200);
     await expect(me.json()).resolves.toMatchObject({ user: { username: 'dev' } });
 
+    const crossSiteCreate = await fetch(`${baseUrl}/sessions`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        cookie: cookie!,
+        origin: 'https://evil.example',
+      },
+      body: JSON.stringify({ title: 'Cross-site cookie session' }),
+    });
+    expect(crossSiteCreate.status).toBe(403);
+    await expect(crossSiteCreate.json()).resolves.toMatchObject({ error: 'forbidden' });
+
+    const crossSiteFetchMetadataCreate = await fetch(`${baseUrl}/sessions`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        cookie: cookie!,
+        'sec-fetch-site': 'cross-site',
+      },
+      body: JSON.stringify({ title: 'Cross-site fetch metadata cookie session' }),
+    });
+    expect(crossSiteFetchMetadataCreate.status).toBe(403);
+
     const createSession = await fetch(`${baseUrl}/sessions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', cookie: cookie! },
+      headers: { 'content-type': 'application/json', cookie: cookie!, origin: baseUrl },
       body: JSON.stringify({ title: 'Cookie session' }),
     });
     expect(createSession.status).toBe(201);
     expectSessionResponse(await createSession.json());
+
+    const crossSiteLogout = await fetch(`${baseUrl}/auth/logout`, {
+      method: 'POST',
+      headers: { cookie: cookie!, origin: 'https://evil.example' },
+    });
+    expect(crossSiteLogout.status).toBe(403);
 
     const logout = await fetch(`${baseUrl}/auth/logout`, { method: 'POST', headers: { cookie: cookie! } });
     expect(logout.headers.get('set-cookie')).toContain('Max-Age=0');
@@ -942,6 +983,9 @@ describe('core API', () => {
     expect(download.status).toBe(200);
     expect(download.headers.get('content-type')).toContain('text/plain');
     expect(download.headers.get('content-disposition')).toContain('debug.log');
+    expect(download.headers.get('content-disposition')).toContain('attachment');
+    expect(download.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(download.headers.get('content-security-policy')).toBeNull();
     await expect(download.text()).resolves.toBe('hello artifact storage');
 
     const preview = await fetch(`${baseUrl}/sessions/${session.id}/artifacts/${artifact!.id}/preview`);
@@ -951,6 +995,44 @@ describe('core API', () => {
     expect(previewBody).toMatchObject({
       preview: { text: 'hello artifact storage', contentType: 'text/plain', truncated: false, sizeBytes: 22 },
     });
+  });
+
+  it('only serves strict safe artifact content types inline', async () => {
+    await restartWithFilesystemArtifacts();
+    const createSession = await postJson(`${baseUrl}/sessions`, { title: 'Inline artifact safety' });
+    const { session } = (await createSession.json()) as { session: { id: string } };
+
+    const [textArtifact, htmlArtifact] = await services.artifacts.recordRunArtifacts({
+      sessionId: session.id,
+      runId: '00000000-0000-4000-8000-000000000919',
+      messageId: '00000000-0000-4000-8000-000000000920',
+      result: {
+        text: 'created artifacts',
+        artifacts: [
+          { type: 'file', content: 'plain text', contentType: 'text/plain; charset=utf-8', fileName: 'safe.txt' },
+          { type: 'file', content: '<script>alert(1)</script>', contentType: 'text/html', fileName: 'unsafe.html' },
+        ],
+      },
+    });
+
+    const safeInline = await fetch(
+      `${baseUrl}/sessions/${session.id}/artifacts/${textArtifact!.id}/download?disposition=inline`,
+    );
+    expect(safeInline.status).toBe(200);
+    expect(safeInline.headers.get('content-disposition')).toContain('inline');
+    expect(safeInline.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(safeInline.headers.get('content-security-policy')).toContain("default-src 'none'");
+    expect(safeInline.headers.get('content-security-policy')).toContain('sandbox');
+
+    const unsafeInline = await fetch(
+      `${baseUrl}/sessions/${session.id}/artifacts/${htmlArtifact!.id}/download?disposition=inline`,
+    );
+    expect(unsafeInline.status).toBe(200);
+    expect(unsafeInline.headers.get('content-type')).toContain('text/html');
+    expect(unsafeInline.headers.get('content-disposition')).toContain('attachment');
+    expect(unsafeInline.headers.get('content-disposition')).toContain('unsafe.html');
+    expect(unsafeInline.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(unsafeInline.headers.get('content-security-policy')).toBeNull();
   });
 
   it('derives artifact titles from filenames when no title is provided', async () => {
