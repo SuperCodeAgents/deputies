@@ -59,6 +59,16 @@ pnpm web:e2e
 pnpm web:build
 ```
 
+## Web API Routes
+
+When adding or changing browser-facing API routes, keep all local and deployed web proxies in sync:
+
+- `apps/web/vite.config.ts` for Vite dev proxy routes.
+- `apps/web/Caddyfile` for deployed/static web reverse proxy routes.
+- `apps/web/Caddyfile.local` for local Caddy/portless reverse proxy routes.
+
+If a route works in Vite dev but fails after deployment, check these Caddy matchers first.
+
 Do not claim Postgres-backed tests could not run until you have tried `./deploy/daytona/start-postgres.sh` or confirmed the sandbox is not using the Daytona image from `deploy/daytona/Dockerfile`.
 
 ## Commits
