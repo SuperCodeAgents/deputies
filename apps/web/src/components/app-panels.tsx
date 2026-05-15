@@ -111,6 +111,7 @@ export function ThreadSidebar(props: {
     [filteredSessions],
   );
   const searching = Boolean(search.trim());
+  const archivedOpen = searching || props.archivedSessionsOpen;
 
   function handleArchivedToggle(event: SyntheticEvent<HTMLDetailsElement>) {
     if (searching) return;
@@ -188,11 +189,12 @@ export function ThreadSidebar(props: {
         {archivedSessions.length || searching ? (
           <details
             className="mt-4 border-t border-border pt-3"
-            open={searching || props.archivedSessionsOpen}
+            open={archivedOpen}
             onToggle={handleArchivedToggle}
           >
             <summary className="flex cursor-pointer items-center gap-1 text-sm font-medium text-muted-foreground">
-              <ChevronDown className="h-4 w-4" /> Archived · {archivedSessions.length}
+              <ChevronDown className={cn('h-4 w-4 -rotate-90 transition-transform', archivedOpen && 'rotate-0')} /> Archived ·{' '}
+              {archivedSessions.length}
             </summary>
             {archivedSessions.length ? (
               <div className="mt-2 grid min-w-0 gap-1 opacity-80">
