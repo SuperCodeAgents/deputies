@@ -5,6 +5,7 @@ import {
   SyntheticEvent,
   TouchEvent,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -33,6 +34,7 @@ import { Textarea } from './ui/textarea.js';
 import { cn } from '../lib/utils.js';
 
 const archivedSessionsOpenStorageKey = 'deputies-archived-sessions-open';
+const optionPickerOpenEvent = 'deputies-option-picker-open';
 const connectionLimitHint =
   'If you have Deputies open in several windows, browser connection limits may block API requests.';
 const wakeRecoveryMessage = 'Reconnecting after your computer was asleep or offline.';
@@ -841,6 +843,7 @@ function OptionPicker(props: {
   disabled: boolean;
   onChange: (value: string) => void;
 }) {
+  const pickerId = useId();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const selected = props.options.find((option) => option.value === props.value);
@@ -852,10 +855,32 @@ function OptionPicker(props: {
   const disabled = props.disabled;
   const direction = props.direction ?? 'down';
 
+  useEffect(() => {
+    function closeOtherPicker(event: Event) {
+      if (!(event instanceof CustomEvent) || event.detail === pickerId) return;
+      setOpen(false);
+    }
+
+    window.addEventListener(optionPickerOpenEvent, closeOtherPicker);
+    return () => window.removeEventListener(optionPickerOpenEvent, closeOtherPicker);
+  }, [pickerId]);
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
   function select(value: string) {
     props.onChange(value);
     setSearch('');
     setOpen(false);
+  }
+
+  function toggleOpen() {
+    setOpen((current) => {
+      const next = !current;
+      if (next) window.dispatchEvent(new CustomEvent(optionPickerOpenEvent, { detail: pickerId }));
+      return next;
+    });
   }
 
   return (
@@ -876,7 +901,7 @@ function OptionPicker(props: {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={props.label}
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggleOpen}
       >
         <span className="truncate" title={selected?.label ?? props.emptyLabel}>
           {selected?.label ?? props.emptyLabel}
