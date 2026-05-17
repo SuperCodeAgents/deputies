@@ -10,6 +10,21 @@ import { dirname, isAbsolute, resolve, sep } from 'node:path';
 const defaultPort = 3584;
 const defaultMaxBodyBytes = 16 * 1024 * 1024;
 const defaultMaxOutputBytes = 1024 * 1024;
+const skippedPreviewRequestHeaders = new Set([
+  'accept-encoding',
+  'authorization',
+  'connection',
+  'content-length',
+  'cookie',
+  'host',
+]);
+const skippedPreviewResponseHeaders = new Set([
+  'connection',
+  'content-encoding',
+  'content-length',
+  'transfer-encoding',
+]);
+const skippedPreviewUpgradeHeaders = new Set(['authorization', 'content-length', 'cookie', 'host']);
 
 export type SandboxBridgeOptions = {
   workspacePath: string;
@@ -179,20 +194,14 @@ function proxyPreviewUpgrade(request: IncomingMessage, socket: Duplex, head: Buf
 
 function upgradeRequestHead(request: IncomingMessage, target: URL): string {
   const headers: Array<[string, string]> = [['host', target.host]];
+  let hasOrigin = false;
   for (const [key, value] of Object.entries(request.headers)) {
     const lower = key.toLowerCase();
-    if (
-      lower === 'authorization' ||
-      lower === 'cookie' ||
-      lower === 'host' ||
-      lower === 'content-length' ||
-      lower === 'origin'
-    )
-      continue;
-    if (Array.isArray(value)) for (const item of value) headers.push([key, item]);
-    else if (value !== undefined) headers.push([key, value]);
+    if (skippedPreviewUpgradeHeaders.has(lower)) continue;
+    if (lower === 'origin') hasOrigin = true;
+    appendHeaderValues(headers, key, value);
   }
-  headers.push(['origin', target.origin]);
+  if (!hasOrigin) headers.push(['origin', target.origin]);
   return [
     `${request.method ?? 'GET'} ${target.pathname || '/'}${target.search} HTTP/1.1`,
     ...headers.map(([key, value]) => `${key}: ${value}`),
@@ -217,7 +226,7 @@ async function proxyPreviewRequest(
   const upstream = await fetch(target, { method: request.method, headers, body, duplex: 'half' } as RequestInit & {
     duplex: 'half';
   });
-  response.writeHead(upstream.status, Object.fromEntries(upstream.headers.entries()));
+  response.writeHead(upstream.status, Object.fromEntries(previewResponseHeaders(upstream.headers).entries()));
   if (!upstream.body) {
     response.end();
     return;
@@ -239,11 +248,29 @@ function previewHeaders(input: IncomingMessage['headers']): Headers {
   const headers = new Headers();
   for (const [key, value] of Object.entries(input)) {
     const lower = key.toLowerCase();
-    if (lower === 'authorization' || lower === 'cookie' || lower === 'host' || lower === 'connection') continue;
+    if (skippedPreviewRequestHeaders.has(lower)) continue;
     if (Array.isArray(value)) for (const item of value) headers.append(key, item);
     else if (value !== undefined) headers.set(key, value);
   }
+  headers.set('accept-encoding', 'identity');
   return headers;
+}
+
+function previewResponseHeaders(input: Headers): Headers {
+  const headers = new Headers();
+  for (const [key, value] of input.entries()) {
+    if (skippedPreviewResponseHeaders.has(key.toLowerCase())) continue;
+    headers.set(key, value);
+  }
+  return headers;
+}
+
+function appendHeaderValues(headers: Array<[string, string]>, key: string, value: string | string[] | undefined): void {
+  if (Array.isArray(value)) {
+    for (const item of value) headers.push([key, item]);
+    return;
+  }
+  if (value !== undefined) headers.push([key, value]);
 }
 
 async function execCommand(workspacePath: string, input: ParsedExecRequest, maxOutputBytes: number) {

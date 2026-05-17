@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { createServer, type Server } from 'node:http';
+import { gzipSync } from 'node:zlib';
 import { createSandboxBridgeServer } from '../src/server.js';
 
 describe('sandbox bridge server', () => {
@@ -142,6 +143,38 @@ describe('sandbox bridge server', () => {
     }
   });
 
+  it('does not forward decoded response encoding metadata', async () => {
+    const body = gzipSync('compressed ok');
+    const upstream = createServer((request, response) => {
+      response.writeHead(200, {
+        'content-encoding': 'gzip',
+        'content-length': String(body.byteLength),
+        'content-type': 'text/plain',
+        'x-accept-encoding': request.headers['accept-encoding'] ?? 'missing',
+      });
+      response.end(body);
+    });
+    upstream.listen(0, '127.0.0.1');
+    await once(upstream, 'listening');
+    const address = upstream.address();
+    if (typeof address !== 'object' || !address) throw new Error('Expected upstream address');
+
+    try {
+      const response = await bridgeFetch(`/preview/${address.port}/asset.js`, {
+        headers: { 'accept-encoding': 'gzip, br' },
+      });
+
+      expect(response.headers.get('content-encoding')).toBeNull();
+      expect(response.headers.get('content-length')).toBeNull();
+      expect(response.headers.get('x-accept-encoding')).toBe('identity');
+      await expect(response.text()).resolves.toBe('compressed ok');
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        upstream.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
   it('proxies preview websocket upgrades to localhost', async () => {
     const upstream = createServer();
     upstream.on('upgrade', (request, socket) => {
@@ -168,6 +201,38 @@ describe('sandbox bridge server', () => {
     }
   });
 
+  it('preserves preview websocket origins for forwarded service hosts', async () => {
+    const upstream = createServer();
+    upstream.on('upgrade', (request, socket) => {
+      socket.write(
+        'HTTP/1.1 101 Switching Protocols\r\n' +
+          'Connection: Upgrade\r\n' +
+          'Upgrade: websocket\r\n' +
+          `X-Upstream-Origin: ${request.headers.origin}\r\n` +
+          `X-Upstream-Forwarded-Host: ${request.headers['x-forwarded-host']}\r\n` +
+          '\r\n',
+      );
+      socket.end();
+    });
+    upstream.listen(0, '127.0.0.1');
+    await once(upstream, 'listening');
+    const address = upstream.address();
+    if (typeof address !== 'object' || !address) throw new Error('Expected upstream address');
+
+    try {
+      await expect(
+        rawUpgrade(`/preview/${address.port}/stable-abc?reconnection=false`, {
+          origin: 'https://s-8080-session-1.deputies.localhost',
+          forwardedHost: 's-8080-session-1.deputies.localhost',
+        }),
+      ).resolves.toContain('X-Upstream-Origin: https://s-8080-session-1.deputies.localhost');
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        upstream.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
   function bridgeFetch(path: string, init: RequestInit = {}): Promise<Response> {
     return fetch(`${baseUrl}${path}`, {
       ...init,
@@ -178,7 +243,7 @@ describe('sandbox bridge server', () => {
     });
   }
 
-  function rawUpgrade(path: string): Promise<string> {
+  function rawUpgrade(path: string, headers: { origin?: string; forwardedHost?: string } = {}): Promise<string> {
     const url = new URL(baseUrl);
     return new Promise((resolve, reject) => {
       const socket = net.connect({ host: url.hostname, port: Number(url.port) });
@@ -186,7 +251,16 @@ describe('sandbox bridge server', () => {
       socket.setEncoding('utf-8');
       socket.once('connect', () => {
         socket.write(
-          `GET ${path} HTTP/1.1\r\nHost: ${url.host}\r\nAuthorization: Bearer ${token}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n`,
+          `GET ${path} HTTP/1.1\r\n` +
+            `Host: ${url.host}\r\n` +
+            `Authorization: Bearer ${token}\r\n` +
+            'Connection: Upgrade\r\n' +
+            'Upgrade: websocket\r\n' +
+            'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n' +
+            'Sec-WebSocket-Version: 13\r\n' +
+            (headers.origin ? `Origin: ${headers.origin}\r\n` : '') +
+            (headers.forwardedHost ? `X-Forwarded-Host: ${headers.forwardedHost}\r\n` : '') +
+            '\r\n',
         );
       });
       socket.on('data', (chunk) => {
