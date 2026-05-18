@@ -1174,6 +1174,7 @@ export function App() {
         </div>
       ) : null}
       {!startupLoading && connectionStatus.state !== 'ok' ? <ConnectionStatusBanner status={connectionStatus} /> : null}
+      {!startupLoading && currentUser?.role === 'viewer' ? <ReadOnlyModeBanner /> : null}
 
       {startupLoading ? (
         <StartupLoadingPanel connectionStatus={connectionStatus} />
@@ -1404,6 +1405,18 @@ export function App() {
         </>
       )}
     </main>
+  );
+}
+
+function ReadOnlyModeBanner() {
+  return (
+    <div
+      className="border-b border-warning/30 bg-warning/10 px-4 py-2 text-sm text-warning-foreground dark:text-warning"
+      role="status"
+    >
+      <strong>Read-only mode:</strong> You can inspect sessions, messages, artifacts, and service metadata. Only admins
+      can start work, modify sessions, or open sandbox services.
+    </div>
   );
 }
 

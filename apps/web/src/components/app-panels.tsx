@@ -882,14 +882,6 @@ export function MessageComposer(props: {
             onChange={props.onModelChange}
             disabled={props.archived || props.readOnly || props.modelOptions.length <= 1}
           />
-          {props.archived ? (
-            <span className="min-w-full text-center sm:min-w-0 sm:flex-1 sm:text-left">
-              Archived sessions are read-only until restored.
-            </span>
-          ) : null}
-          {props.readOnly ? (
-            <span className="min-w-full text-center sm:min-w-0 sm:flex-1 sm:text-left">You have read-only access.</span>
-          ) : null}
           <Button
             className="ml-auto shrink-0 whitespace-nowrap"
             type="submit"
