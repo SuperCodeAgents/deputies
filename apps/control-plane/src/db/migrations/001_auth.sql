@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS auth_users (
   id uuid PRIMARY KEY,
   username text NOT NULL,
+  role text NOT NULL DEFAULT 'viewer' CHECK (role IN ('admin', 'viewer')),
   display_name text,
   avatar_url text,
   created_at timestamptz NOT NULL,

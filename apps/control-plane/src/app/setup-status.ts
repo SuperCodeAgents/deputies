@@ -237,6 +237,8 @@ async function postgresStatus(config: AppConfig): Promise<SetupStatusItem> {
     const applied = await pool.query<{ id: string }>('SELECT id FROM app_migrations');
     const appliedIds = new Set(applied.rows.map((row) => row.id));
     const missing = expected.filter((file) => !appliedIds.has(file));
+    // Count only currently expected migration files; old squashed migration rows may remain in deployed databases.
+    const appliedExpected = expected.length - missing.length;
     return {
       id: 'postgres',
       label: 'Postgres',
@@ -245,7 +247,7 @@ async function postgresStatus(config: AppConfig): Promise<SetupStatusItem> {
         ? `${missing.length} migration(s) have not been applied.`
         : 'Postgres connects and migrations are current.',
       guidance: missing.length ? 'Run pnpm control-plane:db:migrate.' : undefined,
-      details: [`Applied migrations: ${appliedIds.size}/${expected.length}`],
+      details: [`Applied migrations: ${appliedExpected}/${expected.length}`],
       docsPath: 'README.md',
     };
   } catch (error) {
