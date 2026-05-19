@@ -17,3 +17,42 @@ pnpm www:dev
 pnpm www:build
 pnpm www:preview
 ```
+
+Static demo data:
+
+Review exported data before publishing it. The export is designed for a public read-only demo and includes the session
+prompts, event payloads, artifact metadata, external resources, and callback delivery status needed by the UI.
+When `--include-artifacts` is used, stored artifact files are copied into `apps/web/public/demo/artifacts` and their
+URLs are rewritten so image and browser-playable video artifacts render in the static demo.
+
+```sh
+DATABASE_URL=postgres://flue:flue@127.0.0.1:5432/flue pnpm --dir apps/control-plane demo:export -- --session-id <session-id> --session-id <session-id>
+pnpm www:build
+```
+
+The current public demo set was exported from local Postgres and SeaweedFS/S3 using `.env.local` for `DATABASE_URL` and
+artifact storage settings:
+
+```sh
+set -a; source ./.env.local; set +a
+pnpm --dir apps/control-plane demo:export -- --include-artifacts \
+  --session-id 2e1b8be8-d872-45f9-851f-b4400319827d \
+  --session-id 3d89bb50-2b1c-46f9-a3a6-a192ddc38ef2 \
+  --session-id 5def100c-eed1-4b37-82c2-066b97bd390b \
+  --session-id d7d24550-4804-45d5-9df8-da26e079e796 \
+  --session-id 6678a357-0e6d-4cae-bc74-3ce5394d8cdb
+pnpm www:build
+```
+
+For local preview, build the embedded web demo before starting the www dev server:
+
+```sh
+pnpm --dir apps/web build:static-demo
+pnpm www:dev
+```
+
+If you explicitly want the most recently updated sessions instead of a reviewed set of ids, pass `--latest`:
+
+```sh
+DATABASE_URL=... pnpm --dir apps/control-plane demo:export -- --latest --limit 3
+```

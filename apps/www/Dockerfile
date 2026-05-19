@@ -11,9 +11,10 @@ COPY packages/sandbox-bridge/package.json packages/sandbox-bridge/package.json
 
 RUN pnpm install --frozen-lockfile
 
+COPY apps/web apps/web
 COPY apps/www apps/www
 
-RUN pnpm --dir apps/www build
+RUN pnpm www:build
 
 FROM caddy:2.11-alpine AS runtime
 

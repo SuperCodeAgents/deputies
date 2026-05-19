@@ -1531,8 +1531,14 @@ function artifactsForGroup(artifacts: Artifact[], group: MessageGroup): Artifact
 }
 
 function artifactDownloadUrl(artifact: Artifact): string | undefined {
+  if (artifact.url && isStaticDemoArtifact(artifact)) return artifact.url;
   if (!artifact.storageKey) return undefined;
   return `${getApiBaseUrl()}/sessions/${artifact.sessionId}/artifacts/${artifact.id}/download`;
+}
+
+function isStaticDemoArtifact(artifact: Artifact): boolean {
+  const staticDemo = artifact.payload.staticDemo;
+  return Boolean(staticDemo && typeof staticDemo === 'object' && !Array.isArray(staticDemo));
 }
 
 function artifactDownloadUrlFromHref(href: string): string | null {
@@ -1542,7 +1548,7 @@ function artifactDownloadUrlFromHref(href: string): string | null {
 }
 
 function artifactMediaUrl(downloadUrl: string): string {
-  const url = new URL(downloadUrl);
+  const url = new URL(downloadUrl, window.location.origin);
   url.searchParams.set('disposition', 'inline');
   return url.toString();
 }

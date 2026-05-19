@@ -8,6 +8,11 @@
 		file_server
 	}
 
+	@staticDemo path /static-demo/*
+	handle @staticDemo {
+		file_server
+	}
+
 	handle {
 		header Cache-Control "no-cache"
 		try_files {path} /index.html

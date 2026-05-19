@@ -35,7 +35,7 @@
     "web:build": "pnpm --dir apps/web build",
     "web:e2e": "pnpm --dir apps/web e2e",
     "www:dev": "pnpm --dir apps/www dev",
-    "www:build": "pnpm --dir apps/www build",
+    "www:build": "pnpm --dir apps/web build:static-demo && pnpm --dir apps/www build",
     "www:preview": "pnpm --dir apps/www preview",
     "smoke:full-stack": "./deploy/local/full-stack-smoke.sh",
     "web:test": "pnpm --dir apps/web test",
