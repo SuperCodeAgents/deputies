@@ -1270,7 +1270,7 @@ export function ThreadHeader(props: ThreadHeaderProps) {
       <div className="flex min-w-0 items-start gap-2 overflow-hidden">
         {props.showOpenSidebar ? (
           <Button
-            className="mt-4 h-8 w-8 shrink-0 p-0 md:hidden"
+            className="self-center h-8 w-8 shrink-0 p-0 md:hidden"
             variant="ghost"
             size="icon"
             onClick={props.onOpenSidebar}
