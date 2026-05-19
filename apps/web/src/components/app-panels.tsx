@@ -783,6 +783,7 @@ export function NewThreadPanel(props: {
 export function MessageComposer(props: {
   archived: boolean;
   readOnly: boolean;
+  compactInput?: boolean;
   hasSelectedRepository: boolean;
   repository: string;
   inheritedRepository: string;
@@ -865,7 +866,7 @@ export function MessageComposer(props: {
       <Card className="bg-card/90">
         <Textarea
           key={promptResetKey}
-          className="min-h-28 border-0 bg-transparent focus:ring-0"
+          className={cn(props.compactInput ? 'min-h-12' : 'min-h-28', 'border-0 bg-transparent focus:ring-0')}
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           onKeyDown={(event) => submitOnEnter(event)}

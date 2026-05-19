@@ -195,6 +195,7 @@ function StaticSessionView(props: { demoSession: StaticDemoSession; onOpenSideba
             key={session.id}
             archived={session.status === 'archived'}
             readOnly
+            compactInput
             hasSelectedRepository={Boolean(repository)}
             repository=""
             inheritedRepository={repository ?? ''}
