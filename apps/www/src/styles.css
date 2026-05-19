@@ -387,7 +387,7 @@ h1 {
 .static-demo-frame iframe {
   display: block;
   width: 100%;
-  height: clamp(34rem, 72vw, 48rem);
+  height: clamp(42rem, 82vw, 56rem);
   border: 0;
   background: var(--card);
 }
