@@ -149,6 +149,7 @@ function StaticSessionView(props: { demoSession: StaticDemoSession; onOpenSideba
         selectedSession={session}
         canAdmin={false}
         canOpenWorkspaceTools
+        workspaceToolsDisabled
         showOpenSidebar
         workspaceToolsUnavailableReason=""
         onArchive={() => undefined}

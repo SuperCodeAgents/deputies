@@ -1191,6 +1191,7 @@ function workspaceToolUnavailableReason(session: Session): string {
 type ThreadHeaderProps = {
   canAdmin: boolean;
   canOpenWorkspaceTools?: boolean;
+  workspaceToolsDisabled?: boolean;
   selectedSession: Session;
   showOpenSidebar: boolean;
   workspaceToolsUnavailableReason?: string;
@@ -1212,6 +1213,7 @@ export function ThreadHeader(props: ThreadHeaderProps) {
   const [openingWorkspaceTool, setOpeningWorkspaceTool] = useState<WorkspaceToolId | ''>('');
   const toolsRef = useRef<HTMLDivElement>(null);
   const canOpenWorkspaceTools = props.canOpenWorkspaceTools ?? props.canAdmin;
+  const workspaceToolsDisabled = Boolean(props.workspaceToolsDisabled);
   const workspaceUnavailableReason =
     props.workspaceToolsUnavailableReason ?? workspaceToolUnavailableReason(props.selectedSession);
 
@@ -1254,7 +1256,7 @@ export function ThreadHeader(props: ThreadHeaderProps) {
 
   async function openWorkspaceTool(toolId: WorkspaceToolId) {
     setToolsOpen(false);
-    if (!canOpenWorkspaceTools) return;
+    if (!canOpenWorkspaceTools || workspaceToolsDisabled) return;
     setOpeningWorkspaceTool(toolId);
     try {
       await props.onOpenWorkspaceTool(toolId);
@@ -1361,7 +1363,7 @@ export function ThreadHeader(props: ThreadHeaderProps) {
                         key={id}
                         type="button"
                         className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={Boolean(openingWorkspaceTool)}
+                        disabled={workspaceToolsDisabled || Boolean(openingWorkspaceTool)}
                         role="menuitem"
                         onClick={() => openWorkspaceTool(id)}
                       >
