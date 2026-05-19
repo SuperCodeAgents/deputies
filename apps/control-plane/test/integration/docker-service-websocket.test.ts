@@ -50,17 +50,28 @@ describe('Docker service WebSocket proxy integration', () => {
     });
     controlPlane = createServer(
       loadConfig({
-        API_AUTH_MODE: 'none',
+        API_AUTH_MODE: 'session',
+        AUTH_STATIC_USERNAME: 'dev',
+        AUTH_STATIC_PASSWORD: 'password',
+        AUTH_SESSION_SECRET: 'test-secret',
         SERVICE_BASE_DOMAIN: 'deputies.localhost',
+        SERVICE_TRUST_FORWARDED_HOSTS: 'true',
         WEB_BASE_URL: 'https://deputies.localhost',
       }),
       createServices(store, { sandboxProvider: provider }),
     );
     controlPlaneUrl = await listen(controlPlane);
 
-    const createSession = await fetch(`${controlPlaneUrl}/sessions`, {
+    const login = await fetch(`${controlPlaneUrl}/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'dev', password: 'password' }),
+    });
+    const cookie = login.headers.get('set-cookie');
+
+    const createSession = await fetch(`${controlPlaneUrl}/sessions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: cookie! },
       body: JSON.stringify({ title: 'Docker WebSocket service' }),
     });
     const { session } = (await createSession.json()) as { session: { id: string } };
@@ -78,16 +89,26 @@ describe('Docker service WebSocket proxy integration', () => {
       updatedAt: now,
     });
 
-    const response = await rawUpgrade(controlPlaneUrl, {
-      host: `s-${upstreamPort}-${session.id}.deputies.localhost`,
-      origin: `https://s-${upstreamPort}-${session.id}.deputies.localhost`,
+    const serviceHost = `s-${upstreamPort}-${session.id}.deputies.localhost`;
+    const directResponse = await rawUpgrade(controlPlaneUrl, {
+      host: serviceHost,
+      cookie: cookie!,
+      origin: `https://${serviceHost}`,
+      path: '/stable-code-server?reconnection=false',
+    });
+    const forwardedResponse = await rawUpgrade(controlPlaneUrl, {
+      forwardedHost: serviceHost,
+      cookie: cookie!,
+      origin: `https://${serviceHost}`,
       path: '/stable-code-server?reconnection=false',
     });
 
-    expect(response).toContain('HTTP/1.1 101 Switching Protocols');
-    expect(response).toContain(`X-Upstream-Origin: https://s-${upstreamPort}-${session.id}.deputies.localhost`);
-    expect(response).toContain('X-Upstream-Path: /stable-code-server?reconnection=false');
-    expect(response).toContain(`X-Upstream-Host: 127.0.0.1:${upstreamPort}`);
+    for (const response of [directResponse, forwardedResponse]) {
+      expect(response).toContain('HTTP/1.1 101 Switching Protocols');
+      expect(response).toContain(`X-Upstream-Origin: https://${serviceHost}`);
+      expect(response).toContain('X-Upstream-Path: /stable-code-server?reconnection=false');
+      expect(response).toContain(`X-Upstream-Host: 127.0.0.1:${upstreamPort}`);
+    }
   });
 });
 
@@ -174,7 +195,10 @@ async function listen(server: Server): Promise<string> {
   return `http://${address.address}:${address.port}`;
 }
 
-function rawUpgrade(baseUrl: string, input: { host: string; origin: string; path: string }): Promise<string> {
+function rawUpgrade(
+  baseUrl: string,
+  input: { host?: string; forwardedHost?: string; cookie?: string; origin: string; path: string },
+): Promise<string> {
   const url = new URL(baseUrl);
   return new Promise((resolve, reject) => {
     const socket = net.connect({ host: url.hostname, port: Number(url.port) });
@@ -183,7 +207,10 @@ function rawUpgrade(baseUrl: string, input: { host: string; origin: string; path
     socket.once('connect', () => {
       socket.write(
         `GET ${input.path} HTTP/1.1\r\n` +
-          `Host: ${input.host}\r\n` +
+          `Host: ${input.host ?? url.host}\r\n` +
+          (input.forwardedHost ? `X-Forwarded-Host: ${input.forwardedHost}\r\n` : '') +
+          (input.forwardedHost ? 'X-Forwarded-Proto: https\r\n' : '') +
+          (input.cookie ? `Cookie: ${input.cookie}\r\n` : '') +
           'Connection: Upgrade\r\n' +
           'Upgrade: websocket\r\n' +
           `Origin: ${input.origin}\r\n` +

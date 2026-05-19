@@ -411,8 +411,10 @@ function isTrustedUpgradeRequest(config: AppConfig, request: IncomingMessage): b
 
 function trustedUpgradeOrigins(config: AppConfig, request: IncomingMessage): Set<string> {
   const origins = new Set(['http://localhost:5173', 'http://127.0.0.1:5173']);
-  const requestHost = stringHeader(request.headers.host);
-  if (requestHost) origins.add(new URL(request.url ?? '/', `http://${requestHost}`).origin);
+  for (const host of previewNodeRequestHosts(config, request)) {
+    origins.add(new URL(request.url ?? '/', `http://${host}`).origin);
+    origins.add(new URL(request.url ?? '/', `https://${host}`).origin);
+  }
   if (config.webBaseUrl) origins.add(new URL(config.webBaseUrl).origin);
   return origins;
 }
