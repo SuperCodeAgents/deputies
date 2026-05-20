@@ -111,7 +111,7 @@ a {
   grid-template-columns: minmax(0, 1fr) minmax(20rem, 0.78fr);
   gap: 3rem;
   align-items: center;
-  padding: clamp(2.5rem, 5vw, 4rem) 0 3.25rem;
+  padding: clamp(2.5rem, 5vw, 4rem) 0 2.5rem;
 }
 
 .eyebrow {
@@ -302,7 +302,7 @@ h1 {
 .demo-section {
   display: grid;
   gap: 1rem;
-  margin-bottom: 3rem;
+  margin-bottom: 2.5rem;
 }
 
 .section-heading {
@@ -328,8 +328,9 @@ h1 {
   gap: 1rem;
 }
 
+.features-section,
 .architecture-section {
-  margin-bottom: 3rem;
+  margin-bottom: 2.5rem;
 }
 
 .demo-section {
