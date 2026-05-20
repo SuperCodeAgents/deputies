@@ -145,6 +145,20 @@ h1 {
   font-size: clamp(1rem, 1.5vw, 1.16rem);
 }
 
+.hero-text a {
+  color: var(--foreground);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: oklch(0.623 0.214 259.815 / 45%);
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.18rem;
+}
+
+.hero-text a:hover {
+  color: var(--primary);
+  text-decoration-color: currentColor;
+}
+
 .hero-actions {
   flex-wrap: wrap;
   gap: 0.75rem;
