@@ -39,13 +39,14 @@ This is a living backlog for product, integration, runtime, and operations work.
 - Agent authentication to external services through MCP, CLI credentials, API tokens, and short-lived provider tokens.
 - Harden and document OpenAI Codex subscription authentication, including `pnpm auth:login:openai-codex`, `FLUE_MODEL=openai-codex/<model>`, and `FLUE_OPENAI_CODEX_AUTH_FILE` override behavior.
 - Credential scoping and injection policy for tools, commands, MCP servers, and sandbox environments.
-- Multi-repository task support with one primary writable repo, auxiliary read-only context repos by default, and explicit multi-writable change sets when a task spans repos.
+- First-class multi-repository task support, including environments made of one or more repositories, one primary writable repo by default, auxiliary read-only context repos, and explicit multi-writable change sets when a task spans repos.
 - Prompt templates and snapshot tests for Slack/GitHub/Linear inputs.
 - Better repo resolution from Slack/GitHub/Linear context.
 - Populate `repository list` from GitHub App installation repositories instead of only `GITHUB_ALLOWED_REPOSITORIES`, while keeping the allowlist enforced at webhook intake and runtime token minting.
 - Setup/install hook observability beyond `repository_ready`.
+- User-controlled startup scripts for repository/environment setup before agent work begins.
 - Preview URL artifact emission from agent tools and sandbox processes, with normalization for common local/dev-server/deployment URL patterns.
-- Snapshot/image baking for common repos and build artifacts, with Flue startup refresh for stale or missing worktrees.
+- Auto-refreshing sandbox images for common repos that keep up with main, preinstall dependencies, precompile the app, and still use Flue startup refresh for stale or missing worktrees.
 - Upstream Flue cancellation improvement for built-in bash/tool execution.
 
 ## Automations
