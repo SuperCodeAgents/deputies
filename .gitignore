@@ -1,6 +1,8 @@
 node_modules/
 dist/
 apps/www/public/static-demo/
+apps/www/public/twitter-banner.png
+apps/www/public/twitter-profile.png
 coverage/
 playwright-report/
 test-results/
