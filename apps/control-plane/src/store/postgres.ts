@@ -389,6 +389,38 @@ export class PostgresStore implements AppStore {
     return toSession(row);
   }
 
+  async archiveSession(input: { sessionId: string; archivedAt: Date }): Promise<{
+    session: SessionRecord;
+    cancelledMessages: MessageRecord[];
+  }> {
+    return this.transaction(async (client) => {
+      await client.query('SELECT id FROM sessions WHERE id = $1 FOR UPDATE', [input.sessionId]);
+
+      const cancelled = await client.query<MessageRow>(
+        `UPDATE messages
+         SET status = 'cancelled'
+         WHERE session_id = $1 AND status = 'pending'
+         RETURNING id, session_id, sequence, status, prompt, author_user_id, author_name, source, context, created_at`,
+        [input.sessionId],
+      );
+
+      const result = await client.query<SessionRow>(
+        `UPDATE sessions
+         SET status = 'archived', updated_at = $2
+         WHERE id = $1
+         RETURNING id, status, title, context, created_at, updated_at, queue_paused_at`,
+        [input.sessionId, input.archivedAt],
+      );
+
+      const row = result.rows[0];
+      if (!row) throw new Error(`Session does not exist: ${input.sessionId}`);
+      return {
+        session: toSession(row),
+        cancelledMessages: cancelled.rows.map(toMessage).sort((a, b) => a.sequence - b.sequence),
+      };
+    });
+  }
+
   async updateSessionForRun(input: {
     record: SessionRecord;
     runId: string;

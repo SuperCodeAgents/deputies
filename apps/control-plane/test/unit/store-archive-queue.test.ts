@@ -32,13 +32,17 @@ describe('store archive queue behavior', () => {
     await expect(services.sessions.get(session.id)).resolves.toMatchObject({ status: 'active' });
   });
 
-  it('does not claim pending messages for archived sessions', async () => {
+  it('cancels pending messages when archiving queued sessions', async () => {
     const store = new MemoryStore();
     const services = createServices(store);
     const session = await services.sessions.create({ title: 'Archived queue' });
-    await services.messages.enqueue({ sessionId: session.id, prompt: 'do not run' });
+    const message = await services.messages.enqueue({ sessionId: session.id, prompt: 'do not run' });
     await services.sessions.archive(session.id);
 
+    await expect(services.sessions.get(session.id)).resolves.toMatchObject({ status: 'archived' });
+    await expect(services.messages.list(session.id)).resolves.toEqual([
+      expect.objectContaining({ id: message.id, status: 'cancelled' }),
+    ]);
     await expect(
       store.claimNextPendingMessageBatch({
         runId: '00000000-0000-4000-8000-000000001001',

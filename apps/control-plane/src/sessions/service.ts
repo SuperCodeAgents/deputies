@@ -76,11 +76,15 @@ export class SessionService {
     const existing = await this.store.getSession(id);
     if (!existing) throw new SessionServiceError('not_found');
 
-    const session = await this.store.updateSession({
-      ...existing,
-      status: 'archived',
-      updatedAt: new Date(),
-    });
+    const { session, cancelledMessages } = await this.store.archiveSession({ sessionId: id, archivedAt: new Date() });
+    for (const message of cancelledMessages) {
+      await this.events.append({
+        sessionId: session.id,
+        messageId: message.id,
+        type: 'message_cancelled',
+        payload: { sequence: message.sequence, reason: 'session_archived' },
+      });
+    }
     await this.events.append({
       sessionId: session.id,
       type: 'session_archived',

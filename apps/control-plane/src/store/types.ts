@@ -316,6 +316,10 @@ export interface SessionStore {
   getSession(id: string): Promise<SessionRecord | null>;
   listSessions(): Promise<SessionRecord[]>;
   updateSession(record: SessionRecord): Promise<SessionRecord>;
+  archiveSession(input: { sessionId: string; archivedAt: Date }): Promise<{
+    session: SessionRecord;
+    cancelledMessages: MessageRecord[];
+  }>;
   updateSessionForRun(input: {
     record: SessionRecord;
     runId: string;

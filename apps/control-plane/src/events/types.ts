@@ -23,7 +23,7 @@ export type NormalizedEventPayloadMap = {
   session_queue_resumed: EmptyEventPayload;
   message_created: { sequence: number; source: string | null; transcriptOnly?: true };
   message_updated: { sequence: number };
-  message_cancelled: { sequence: number; transcriptOnly?: true };
+  message_cancelled: { sequence: number; transcriptOnly?: true; reason?: 'session_archived' };
   message_started: { sequences: number[]; batchSize: number };
   run_started: { runner: string };
   sandbox_starting: { provider: string };

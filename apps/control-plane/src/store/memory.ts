@@ -119,6 +119,27 @@ export class MemoryStore implements AppStore {
     return record;
   }
 
+  async archiveSession(input: { sessionId: string; archivedAt: Date }): Promise<{
+    session: SessionRecord;
+    cancelledMessages: MessageRecord[];
+  }> {
+    const existing = this.sessions.get(input.sessionId);
+    if (!existing) throw new Error(`Session does not exist: ${input.sessionId}`);
+
+    const sessionMessages = this.messages.get(input.sessionId) ?? [];
+    const cancelledMessages: MessageRecord[] = [];
+    for (const message of sessionMessages) {
+      if (message.status !== 'pending') continue;
+      const cancelled: MessageRecord = { ...message, status: 'cancelled' };
+      sessionMessages[sessionMessages.indexOf(message)] = cancelled;
+      cancelledMessages.push(cancelled);
+    }
+
+    const session = { ...existing, status: 'archived' as const, updatedAt: input.archivedAt };
+    this.sessions.set(input.sessionId, session);
+    return { session, cancelledMessages };
+  }
+
   async updateSessionForRun(input: {
     record: SessionRecord;
     runId: string;
