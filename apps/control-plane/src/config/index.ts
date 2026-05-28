@@ -84,7 +84,6 @@ export type AppConfig = {
   flueModel?: string;
   flueModelOptions: string[];
   flueOpenaiCodexAuthFile?: string;
-  flueOpenaiCodexAuthJson?: string;
   flueOpenaiCodexAuthBase64?: string;
   fakeRunnerArtifact?: Record<string, unknown>;
   daytonaApiKey?: string;
@@ -236,7 +235,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   if (env.DATABASE_URL) config.databaseUrl = env.DATABASE_URL;
   if (env.FLUE_MODEL) config.flueModel = env.FLUE_MODEL;
   if (env.FLUE_OPENAI_CODEX_AUTH_FILE) config.flueOpenaiCodexAuthFile = env.FLUE_OPENAI_CODEX_AUTH_FILE;
-  if (env.FLUE_OPENAI_CODEX_AUTH_JSON) config.flueOpenaiCodexAuthJson = env.FLUE_OPENAI_CODEX_AUTH_JSON;
   if (env.FLUE_OPENAI_CODEX_AUTH_BASE64) config.flueOpenaiCodexAuthBase64 = env.FLUE_OPENAI_CODEX_AUTH_BASE64;
   if (env.FAKE_RUNNER_ARTIFACT_JSON) {
     config.fakeRunnerArtifact = parseJsonRecord(env.FAKE_RUNNER_ARTIFACT_JSON, 'FAKE_RUNNER_ARTIFACT_JSON');
@@ -531,9 +529,7 @@ function providerDerivedFlueModels(env: NodeJS.ProcessEnv): string[] {
   return [
     ...(env.ANTHROPIC_API_KEY ? ANTHROPIC_FLUE_MODELS : []),
     ...(env.OPENAI_API_KEY ? OPENAI_FLUE_MODELS : []),
-    ...(env.FLUE_OPENAI_CODEX_AUTH_FILE || env.FLUE_OPENAI_CODEX_AUTH_JSON || env.FLUE_OPENAI_CODEX_AUTH_BASE64
-      ? OPENAI_CODEX_FLUE_MODELS
-      : []),
+    ...(env.FLUE_OPENAI_CODEX_AUTH_FILE || env.FLUE_OPENAI_CODEX_AUTH_BASE64 ? OPENAI_CODEX_FLUE_MODELS : []),
   ];
 }
 

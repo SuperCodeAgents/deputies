@@ -285,7 +285,6 @@ The login task writes OAuth credentials to `~/.pi/agent/auth.json` by default. U
 FLUE_MODEL=openai-codex/gpt-5.5
 FLUE_OPENAI_CODEX_AUTH_FILE=/run/secrets/openai-codex-auth.json
 FLUE_OPENAI_CODEX_AUTH_BASE64=<base64-auth-json>
-FLUE_OPENAI_CODEX_AUTH_JSON='{"openai-codex":{...}}'
 ```
 
 Prefer a mounted secret file or `FLUE_OPENAI_CODEX_AUTH_BASE64` for hosted deployments.
@@ -566,7 +565,6 @@ ANTHROPIC_API_KEY
 OPENAI_API_KEY
 FLUE_OPENAI_CODEX_AUTH_FILE contents
 FLUE_OPENAI_CODEX_AUTH_BASE64
-FLUE_OPENAI_CODEX_AUTH_JSON
 DAYTONA_API_KEY
 DOCKER_ORCHESTRATOR_TOKEN
 SANDBOX_SECRET_ENCRYPTION_KEY

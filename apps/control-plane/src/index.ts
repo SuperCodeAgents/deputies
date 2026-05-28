@@ -272,7 +272,6 @@ async function createRunner(): Promise<Runner> {
   if (configuredModels(config).some((configuredModel) => configuredModel.startsWith('openai-codex/'))) {
     const codexAuth = {};
     if (config.flueOpenaiCodexAuthFile) Object.assign(codexAuth, { authFile: config.flueOpenaiCodexAuthFile });
-    if (config.flueOpenaiCodexAuthJson) Object.assign(codexAuth, { authJson: config.flueOpenaiCodexAuthJson });
     if (config.flueOpenaiCodexAuthBase64) Object.assign(codexAuth, { authBase64: config.flueOpenaiCodexAuthBase64 });
     try {
       const { apiKey } = await loadOpenAICodexApiKey(codexAuth);

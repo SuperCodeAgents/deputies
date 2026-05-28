@@ -122,7 +122,6 @@ secrets:
   anthropicApiKey: ''
   openaiApiKey: ''
   flueOpenaiCodexAuthBase64: ''
-  flueOpenaiCodexAuthJson: ''
   artifactStorageS3AccessKeyId: seaweed
   artifactStorageS3SecretAccessKey: seaweed
   githubOAuthClientId: ''
