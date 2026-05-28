@@ -11,7 +11,9 @@ import {
   type RepositoryToolServices,
 } from './repository-tool.js';
 
-const BLOCKED_COMMANDS = new Set(['alias', 'auth', 'config', 'extension']);
+const BLOCKED_COMMANDS = new Set(['alias', 'auth', 'config', 'extension', 'gist', 'release']);
+const FILE_INPUT_FLAGS = new Set(['--body-file', '--input']);
+const STRUCTURED_FIELD_FLAGS = new Set(['-F', '--field']);
 const MAX_ARGS = 64;
 const MAX_ARG_LENGTH = 4_096;
 const MAX_OUTPUT_BYTES = 50_000;
@@ -98,6 +100,8 @@ function validateArgs(value: unknown): string[] {
     return arg;
   });
 
+  rejectControlPlaneFileInputs(args);
+
   const command = args[0]!;
   if (command === 'gh') throw new Error('Pass gh arguments only; omit the gh executable name');
   if (command.startsWith('-')) throw new Error('gh command must be an explicit subcommand, not a top-level flag');
@@ -116,6 +120,38 @@ function validateArgs(value: unknown): string[] {
     );
   }
   return args;
+}
+
+function rejectControlPlaneFileInputs(args: string[]): void {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
+    const [flag, inlineValue] = splitInlineFlagValue(arg);
+    if (FILE_INPUT_FLAGS.has(flag)) {
+      if (inlineValue !== undefined || args[index + 1] !== undefined) {
+        throw new Error(`gh ${flag} is not available because backend gh cannot read control-plane files`);
+      }
+    }
+
+    if (STRUCTURED_FIELD_FLAGS.has(flag)) {
+      const value = inlineValue ?? args[index + 1];
+      if (value !== undefined && isGhStructuredFieldFileValue(value)) {
+        throw new Error(
+          `gh ${flag} file expansion is not available because backend gh cannot read control-plane files`,
+        );
+      }
+    }
+  }
+}
+
+function splitInlineFlagValue(arg: string): [string, string | undefined] {
+  const equals = arg.indexOf('=');
+  if (equals === -1) return [arg, undefined];
+  return [arg.slice(0, equals), arg.slice(equals + 1)];
+}
+
+function isGhStructuredFieldFileValue(value: string): boolean {
+  const equals = value.indexOf('=');
+  return equals !== -1 && value.slice(equals + 1).startsWith('@');
 }
 
 function isPullRequestCreateCommand(args: string[]): boolean {
@@ -501,25 +537,19 @@ function isGitDatabaseApiRoute(route: string | undefined): boolean {
 }
 
 function createGitHubCliEnv(access: GitHubRepositoryAccess, configDir: string): Record<string, string> {
-  const env = copyStringEnv(process.env);
+  const env: Record<string, string> = {
+    GH_CONFIG_DIR: configDir,
+    GH_PROMPT_DISABLED: '1',
+    GH_REPO: `${access.owner}/${access.repo}`,
+    NO_COLOR: '1',
+  };
   const host = parseCloneHost(access.cloneUrl);
-  env.GH_CONFIG_DIR = configDir;
-  env.GH_PROMPT_DISABLED = '1';
-  env.GH_REPO = `${access.owner}/${access.repo}`;
-  env.NO_COLOR = '1';
+  if (process.env.PATH) env.PATH = process.env.PATH;
   if (host && host !== 'github.com') {
     env.GH_HOST = host;
     env.GH_ENTERPRISE_TOKEN = access.auth.token;
   } else {
     env.GH_TOKEN = access.auth.token;
-  }
-  return env;
-}
-
-function copyStringEnv(source: NodeJS.ProcessEnv): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(source)) {
-    if (typeof value === 'string') env[key] = value;
   }
   return env;
 }
