@@ -36,7 +36,7 @@ export function StaticDemoApp() {
       .then((nextData) => {
         if (cancelled) return;
         setData(nextData);
-        setSelectedSessionId((current) => current || nextData.sessions[0]?.session.id || '');
+        setSelectedSessionId((current) => current || getInitialSessionId(nextData));
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load static demo data.');
@@ -268,6 +268,17 @@ function modelOption(model: string): ModelOption {
 function shouldOpenSessionsOnMobile(): boolean {
   const params = new URLSearchParams(window.location.search);
   return params.get('openSessionsOnMobile') === '1' && (window.matchMedia?.('(max-width: 767px)').matches ?? false);
+}
+
+function getInitialSessionId(data: StaticDemoData): string {
+  const params = new URLSearchParams(window.location.search);
+  const requestedSessionId = params.get('session') ?? '';
+
+  if (requestedSessionId && data.sessions.some((item) => item.session.id === requestedSessionId)) {
+    return requestedSessionId;
+  }
+
+  return data.sessions[0]?.session.id || '';
 }
 
 function resolveThemePreference(theme: ThemePreference): 'light' | 'dark' {

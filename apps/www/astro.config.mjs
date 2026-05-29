@@ -4,13 +4,116 @@ import { defineConfig } from 'astro/config';
 export default defineConfig({
   site: 'https://deputies.dev',
   markdown: {
-    rehypePlugins: [externalLinksNewTab],
+    rehypePlugins: [headingAnchors, responsiveTables, externalLinksNewTab],
   },
   integrations: [mdx()],
 });
 
+function headingAnchors() {
+  return (tree) => addHeadingAnchors(tree, new Set());
+}
+
 function externalLinksNewTab() {
   return (tree) => visitExternalLinks(tree);
+}
+
+function responsiveTables() {
+  return (tree) => wrapTables(tree);
+}
+
+function addHeadingAnchors(node, usedIds) {
+  if (!node || typeof node !== 'object') return;
+
+  if (node.type === 'element' && isAnchoredHeading(node.tagName)) {
+    const headingText = getTextContent(node).trim();
+    const id = getHeadingId(node, headingText, usedIds);
+
+    if (id && !hasHeadingAnchor(node, id)) {
+      node.properties.id = id;
+      node.children = [
+        ...(node.children ?? []),
+        {
+          type: 'element',
+          tagName: 'a',
+          properties: {
+            className: ['heading-anchor'],
+            href: `#${id}`,
+            ariaLabel: `Link to ${headingText || 'this section'}`,
+          },
+          children: [{ type: 'text', value: '#' }],
+        },
+      ];
+    }
+  }
+
+  if (Array.isArray(node.children)) {
+    for (const child of node.children) addHeadingAnchors(child, usedIds);
+  }
+}
+
+function isAnchoredHeading(tagName) {
+  return /^h[2-6]$/.test(tagName);
+}
+
+function getHeadingId(node, headingText, usedIds) {
+  const existingId = typeof node.properties?.id === 'string' ? node.properties.id : undefined;
+
+  if (existingId) {
+    usedIds.add(existingId);
+    return existingId;
+  }
+
+  const baseId = slugifyHeading(headingText) || 'section';
+  let id = baseId;
+  let count = 1;
+
+  while (usedIds.has(id)) {
+    id = `${baseId}-${count}`;
+    count += 1;
+  }
+
+  usedIds.add(id);
+  return id;
+}
+
+function slugifyHeading(value) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
+function hasHeadingAnchor(node, id) {
+  return node.children?.some(
+    (child) => child.type === 'element' && child.tagName === 'a' && child.properties?.href === `#${id}`,
+  );
+}
+
+function getTextContent(node) {
+  if (!node || typeof node !== 'object') return '';
+  if (node.type === 'text') return node.value ?? '';
+  if (!Array.isArray(node.children)) return '';
+  return node.children.map(getTextContent).join('');
+}
+
+function wrapTables(node) {
+  if (!node || typeof node !== 'object' || !Array.isArray(node.children)) return;
+
+  node.children = node.children.map((child) => {
+    if (child.type === 'element' && child.tagName === 'table') {
+      return {
+        type: 'element',
+        tagName: 'div',
+        properties: { className: ['table-scroll'] },
+        children: [child],
+      };
+    }
+
+    wrapTables(child);
+    return child;
+  });
 }
 
 function visitExternalLinks(node) {

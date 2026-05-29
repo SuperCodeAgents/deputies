@@ -584,7 +584,7 @@ h1 {
 }
 
 .post-header {
-  margin-bottom: 2rem;
+  margin-bottom: 1.25rem;
 }
 
 .back-link {
@@ -625,7 +625,7 @@ h1 {
 
 .post-body {
   border-top: 1px solid var(--border);
-  padding-top: 1.5rem;
+  padding-top: 1.25rem;
   color: var(--foreground);
   font-size: 1rem;
 }
@@ -639,6 +639,10 @@ h1 {
 .post-body h4 {
   color: var(--foreground);
   letter-spacing: -0.025em;
+}
+
+.post-body :is(h2, h3, h4, h5, h6)[id] {
+  scroll-margin-top: 1.25rem;
 }
 
 .post-body h2 {
@@ -664,6 +668,26 @@ h1 {
   text-decoration: underline;
   text-decoration-thickness: 0.08em;
   text-underline-offset: 0.18rem;
+}
+
+.post-body .heading-anchor {
+  margin-left: 0.45rem;
+  color: var(--muted-foreground);
+  font-weight: 700;
+  opacity: 0;
+  text-decoration: none;
+  transition:
+    color 140ms ease,
+    opacity 140ms ease;
+}
+
+.post-body :is(h2, h3, h4, h5, h6):hover .heading-anchor,
+.post-body .heading-anchor:focus {
+  opacity: 1;
+}
+
+.post-body .heading-anchor:hover {
+  color: var(--primary);
 }
 
 .post-body ul,
@@ -873,6 +897,42 @@ h1 {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.95rem;
+}
+
+.post-body .table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.post-body .table-scroll table {
+  width: max-content;
+  min-width: 100%;
+}
+
+@media (min-width: 900px) {
+  .post-body .table-scroll {
+    width: min(92vw, 64rem);
+    max-width: none;
+    overflow-x: visible;
+    margin-left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .post-body .table-scroll table {
+    width: 100%;
+  }
+
+  .post-body .table-scroll th,
+  .post-body .table-scroll td {
+    overflow-wrap: anywhere;
+  }
+
+  .post-body .table-scroll th:not(:last-child),
+  .post-body .table-scroll td:not(:last-child) {
+    width: 1%;
+    white-space: nowrap;
+  }
 }
 
 .post-body th,

@@ -31,7 +31,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         </a>
         <a
           class="railway-button"
-          href="https://railway.com/deploy/ZYSsM8?referralCode=P06La2&utm_medium=integration&utm_source=template&utm_campaign=generic"
+          href="https://railway.com/deploy/deputies-monolith?referralCode=P06La2&utm_medium=integration&utm_source=template&utm_campaign=generic"
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -84,7 +84,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       <div class="static-demo-frame">
         <iframe
           title="Read-only Deputies session demo"
-          src="/static-demo/index.html?openSessionsOnMobile=1"
+          src="/static-demo/index.html?session=3d89bb50-2b1c-46f9-a3a6-a192ddc38ef2&openSessionsOnMobile=1"
           loading="lazy"
           referrerpolicy="no-referrer"></iframe>
       </div>
@@ -179,6 +179,22 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         Deputies is built for teams that want to hand off real engineering work to agents while keeping visibility,
         access control, history, callbacks, and deployment concerns in one place. Inbound events can trigger new work,
         and recurring tasks can turn the system from a passive queue into something more proactive.
+      </p>
+    </article>
+    <article class="faq-item">
+      <h3>How is this different from tools like Conductor or Solo?</h3>
+      <p>
+        Tools like <a href="https://www.conductor.build/" target="_blank" rel="noopener noreferrer">Conductor</a> and <a
+          href="https://soloterm.com/"
+          target="_blank"
+          rel="noopener noreferrer">Solo</a
+        > make local coding-agent workflows easier to manage: multiple sessions, terminals, worktrees, and prompts running
+        from an individual developer's machine. That is useful, but it is still centered on one user's interactive environment.
+      </p>
+      <p>
+        Deputies is aimed at the next layer: background-agent infrastructure for teams. Agent sessions run in managed
+        sandboxes, persist beyond a laptop session, expose shared history and artifacts, and can be triggered by
+        external systems like issues, CI failures, alerts, or schedules.
       </p>
     </article>
     <article class="faq-item">

@@ -3,7 +3,7 @@
 Deploy Deputies on Railway with the public template:
 
 ```txt
-https://railway.com/deploy/ZYSsM8
+https://railway.com/deploy/deputies-monolith
 ```
 
 The template provisions a simple production-style stack:

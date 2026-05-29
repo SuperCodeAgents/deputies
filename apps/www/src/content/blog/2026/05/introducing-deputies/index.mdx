@@ -1,0 +1,125 @@
+---
+title: 'Introducing Deputies: Self-Hosted Background Agents'
+description: 'An open-source control plane for background coding agents'
+pubDate: 2026-05-28
+author: 'Sid Palas'
+draft: false
+---
+
+import TwitterEmbed from '../../../../../components/TwitterEmbed.astro';
+
+## What Is a Background Coding Agent?
+
+By now, most people are familiar with the idea of a coding agent. It combines an LLM with a harness (a fancy way of saying "while loop + tool access") to perform software engineering tasks.
+
+Tools like Claude Code, Codex, and OpenCode exploded in popularity over the last year, but they are all primarily focused on individual, user-centric workflows.
+
+Running coding agents on individual developer machines is powerful, but applying that pattern to teams and organizations requires an additional leap. A background coding agent uses the same basic loop, but runs asynchronously on delegated work. Given a prompt, repo, environment, and context, it can inspect code, run tests, make changes, produce artifacts, and report back for review.
+
+The key shift is where that work runs: out of one developer's local session and into a remote control plane.
+
+That changes the operating model in a few important ways:
+
+1. Team visibility and collaboration become first-class, and workflow improvements can be applied across the entire team.
+2. The full sequence of events from prompt to execution to output is captured and auditable.
+3. Execution is not dependent on whether an individual developer machine is on or connected.
+4. Concurrency is not limited by local compute resources.
+5. Work can be triggered by issues, failed CI runs, alerts, dependency updates, or recurring jobs in addition to manual prompts.
+
+### A Brief Timeline of Background Coding Agents
+
+This category has been explored by projects like [Background Agents](https://background-agents.com/), and the broader space has moved quickly:
+
+| Date     | Project                                                                                           | Signal                                                                                                                         |
+| -------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Mar 2024 | [Devin (Cognition)](https://www.cognition.ai/blog/introducing-devin)                              | Popularized the idea of a dedicated AI software engineer working asynchronously.                                               |
+| Mar 2024 | [OpenHands](https://github.com/OpenHands/OpenHands)                                               | Early open-source agent project; many team/background-agent platform features live behind its Cloud and Enterprise offerings.  |
+| May 2025 | [Open SWE](https://github.com/langchain-ai/open-swe)                                              | LangGraph-based open-source agent for issue-driven software engineering work.                                                  |
+| Sep 2025 | [Ona](https://www.gitpod.io/blog/gitpod-is-now-ona)                                               | Gitpod pivoted to Ona, showing cloud development environments converging with agentic coding workflows.                        |
+| Nov 2025 | [Spotify Honk](https://engineering.atspotify.com/2025/11/spotifys-background-coding-agent-part-1) | Spotify evolved Fleet Management into a background coding agent system, reporting 1,500+ merged AI-generated PRs.              |
+| Jan 2026 | [Ramp Inspect](https://builders.ramp.com/post/why-we-built-our-background-agent)                  | Public example of background agents used inside a real engineering org.                                                        |
+| Jan 2026 | [Open Inspect](https://github.com/ColeMurray/background-agents)                                   | Open-source implementation of the background-agent pattern.                                                                    |
+| Feb 2026 | [Cursor self-driving codebases](https://cursor.com/blog/self-driving-codebases)                   | Cursor shared research on long-running multi-agent coding systems operating with minimal human intervention.                   |
+| Feb 2026 | [OpenAI Codex harness](https://openai.com/index/harness-engineering/)                             | OpenAI described an agent-first engineering workflow where Codex generated an internal product through PRs and feedback loops. |
+| Feb 2026 | [Stripe minions](https://stripe.dev/blog/minions-stripes-one-shot-end-to-end-coding-agents)       | Another signal that teams want delegated agents for engineering work.                                                          |
+| May 2026 | [Deputies](https://github.com/sidpalas/deputies)                                                  | 👋 Self-hostable control plane focused on deployability and team operations.                                                   |
+
+## Introducing Deputies
+
+Deputies is an open-source control plane for self-hosted background coding agents.
+
+It can run on the server in your closet or in a giant EKS cluster on AWS.
+
+It is simple enough to get up and running in an hour, but provides the right primitives to build the workflows your team needs.
+
+### See What a Deputies Session Looks Like
+
+Browse a read-only snapshot of real agent work: the original request, progress updates, diagnostics, artifacts, callbacks, and session context that Deputies keeps together while a background agent runs.
+
+<div class="static-demo-breakout">
+  <div class="static-demo-frame">
+    <iframe
+      title="Read-only Deputies session demo"
+      src="/static-demo/index.html?session=3d89bb50-2b1c-46f9-a3a6-a192ddc38ef2&openSessionsOnMobile=1"
+      loading="lazy"
+      referrerPolicy="no-referrer"
+    />
+  </div>
+</div>
+
+## Why Build Another Coding Agent Platform?
+
+As the timeline above shows, this space is moving quickly.
+
+From the conversations I am having, many software companies are either adopting a paid option or building some version of this internally.
+
+That raises the obvious question: "Sid, why build another?"
+
+Hosted commercial offerings such as Devin and Ona are impressive, but they can be expensive, opaque, and constrained by the integrations they choose to support. If your workflow is not covered, you are waiting on someone else's roadmap.
+
+There are also high-quality open-source options, including Open Inspect and Open SWE. But after working with those systems, I became frustrated by their deployment constraints: Open Inspect is tightly tied to Cloudflare, and Open SWE heavily favors deploying to LangSmith.
+
+That is the gap I want Deputies to fill. Deployability is a core feature from day one, so teams can run background coding agents wherever the rest of their infrastructure already runs, without introducing a new deployment model.
+
+## Why Self-Hosted and Open Source?
+
+### Why Self-Hosted?
+
+Background agent systems are most useful when they have the right context: logs, traces, feature flags, CI results, internal docs, private packages, and service-specific tooling. Much of that context already lives behind the same trust boundary as the code.
+
+Self-hosting lets teams run agents inside that boundary and reuse existing access patterns with properly scoped credentials. One workflow might only need read-only access to observability tools; another might need permission to push a branch, use GitHub tooling to open a pull request, or report back to the system that triggered the work.
+
+There is also a cost argument. The models are expensive enough on their own, and self-hosting lets teams run the orchestration layer closer to cost instead of paying a premium on top of LLM usage.
+
+### Why Open Source Matters
+
+Self-hosted infrastructure should be inspectable, not just deployable.
+
+Teams can audit the code and understand how sensitive information is handled, stored, and protected. They can also extend the system for internal workflows, custom integrations, and deployment patterns the default project does not support yet.
+
+Because of that, Deputies can become infrastructure that teams adapt to their environment, not a black box they route around.
+
+### Deployment Options
+
+| Control plane deployment                                                | Agent sandbox provider                                         | Best for                                                                               |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| [Railway deploy template](https://railway.com/deploy/deputies-monolith) | Daytona (more options coming soon!)                            | Easy cloud deployment without managing all the infrastructure yourself.                |
+| Docker Compose                                                          | Docker                                                         | A single big server or VPS where you want Deputies to just work.                       |
+| Kubernetes Helm chart                                                   | [Kubernetes Agent Sandbox](https://agent-sandbox.sigs.k8s.io/) | Existing Kubernetes infrastructure where you want scalability and operational control. |
+| Custom                                                                  | Custom                                                         | Anywhere that can run containers (Caddy + Node.js server) and Postgres.                |
+
+## Who Is Deputies For?
+
+- Engineering teams that want shared visibility, history, review, and iteration around agent usage.
+- Platform teams that want to offer background-agent infrastructure internally instead of asking every team to build its own.
+- Companies with private repos, private networks, custom CI, internal tooling, or compliance requirements.
+- Teams that want background agents without routing the control plane and persisted product state through a hosted background-agent vendor.
+- Developers who want the benefits of background agents without building the orchestration layer from scratch or paying a markup around it.
+
+## Try Deputies
+
+If you want to try Deputies yourself, start with the [deployment docs](https://github.com/sidpalas/deputies/blob/main/docs/deployment.md) in the repo. If you get stuck or want to talk through a deployment, email me at [sid@devopsdirective.com](mailto:sid@devopsdirective.com) or mention [@sidpalas](https://x.com/sidpalas) on X.
+
+If you want to see a more detailed demo of the system, including using the Railway template to spin up a copy of Deputies in about a minute, watch the launch post on X:
+
+<TwitterEmbed url="https://x.com/sidpalas/status/2057814658761867614" reserveHeight="min(720px, 135vw)" />
