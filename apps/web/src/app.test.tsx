@@ -492,6 +492,22 @@ it('opens the access sidebar from the setup page when access is the active sideb
   expect(await screen.findByRole('heading', { name: 'Access groups', level: 1 })).toBeInTheDocument();
 });
 
+it('opens the groups page when selecting an access group from setup', async () => {
+  sessionStorage.setItem('deputies-setup-guide-open', 'true');
+  sessionStorage.setItem('deputies-sidebar-panel', 'groups');
+  mockApi({ authMode: 'session', currentUser: user });
+  render(<App />);
+
+  expect(await screen.findByRole('heading', { name: 'Setup guide' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Open access' }));
+  fireEvent.click(screen.getByRole('button', { name: /Default group/ }));
+
+  expect(await screen.findByRole('heading', { name: 'Access groups', level: 1 })).toBeInTheDocument();
+  expect(sessionStorage.getItem('deputies-setup-guide-open')).toBeNull();
+  expect(sessionStorage.getItem('deputies-groups-panel-open')).toBe('true');
+  expect(sessionStorage.getItem('deputies-groups-panel-selected-group-id')).toBe(group.id);
+});
+
 it('collapses member search results after selecting a user', async () => {
   const teammate = {
     id: '00000000-0000-4000-8000-000000000030',

@@ -147,6 +147,9 @@ import {
   StartupLoadingPanel,
   ThreadHeader,
   ThreadSidebar,
+  type AccessGroupFormState,
+  type AccessGroupMemberSearchState,
+  type AccessGroupUserSearchState,
 } from './components/app-panels.js';
 import { cn } from './lib/utils.js';
 import { ChatPanel, DesktopContextPanel, MobileContextPanel } from './components/thread/thread-content.js';
@@ -155,6 +158,21 @@ type AsyncState<T> = {
   data: T;
   loading: boolean;
   error: string;
+};
+
+type StateUpdate<T> = T | ((current: T) => T);
+
+type SidebarPanel = 'sessions' | 'groups';
+type GroupsPanelView = 'group' | 'super_admins';
+
+type NavigationState = {
+  selectedSessionId: string;
+  sidebarPanel: SidebarPanel;
+  isCreatingThread: boolean;
+  setupGuideOpen: boolean;
+  groupsPanelOpen: boolean;
+  groupsPanelView: GroupsPanelView;
+  selectedGroupId: string;
 };
 
 type SessionDetailState = {
@@ -166,6 +184,17 @@ type SessionDetailState = {
   externalResources: ExternalResource[];
   callbacks: CallbackDelivery[];
 };
+
+type AccessGroupsState = {
+  groupForm: AccessGroupFormState;
+  memberSearch: AccessGroupMemberSearchState;
+  superAdminSearch: AccessGroupUserSearchState;
+  roleManagementUsers: AuthUser[];
+};
+
+function resolveStateUpdate<T>(next: StateUpdate<T>, current: T): T {
+  return typeof next === 'function' ? (next as (current: T) => T)(current) : next;
+}
 
 function emptySessionDetail(): SessionDetailState {
   return {
@@ -179,20 +208,55 @@ function emptySessionDetail(): SessionDetailState {
   };
 }
 
+function emptyAccessGroupsState(): AccessGroupsState {
+  return {
+    groupForm: {
+      name: '',
+      visibility: 'organization',
+      writePolicy: 'group_members',
+      serverError: '',
+    },
+    memberSearch: {
+      query: '',
+      loading: false,
+      userId: '',
+      role: 'viewer',
+      options: [],
+    },
+    superAdminSearch: {
+      query: '',
+      loading: false,
+      userId: '',
+      options: [],
+    },
+    roleManagementUsers: [],
+  };
+}
+
+function loadInitialNavigationState(): NavigationState {
+  return {
+    selectedSessionId: loadInitialSelectedSessionId(),
+    sidebarPanel: loadInitialSidebarPanel(),
+    isCreatingThread: loadInitialIsCreatingThread(),
+    setupGuideOpen: loadInitialSetupGuideOpen(),
+    groupsPanelOpen: loadInitialGroupsPanelOpen(),
+    groupsPanelView: loadInitialGroupsPanelView(),
+    selectedGroupId: loadInitialGroupsPanelSelectedGroupId(),
+  };
+}
+
 export function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState(loadStoredToken);
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
-  const [userOptions, setUserOptions] = useState<AuthUser[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<string>(loadInitialSelectedSessionId);
+  const [navigation, setNavigation] = useState<NavigationState>(loadInitialNavigationState);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarPanel, setSidebarPanel] = useState<'sessions' | 'groups'>(loadInitialSidebarPanel);
-  const [isCreatingThread, setIsCreatingThread] = useState(loadInitialIsCreatingThread);
   const [sessionDetail, setSessionDetail] = useState<SessionDetailState>(emptySessionDetail);
+  const [accessGroupsState, setAccessGroupsState] = useState<AccessGroupsState>(emptyAccessGroupsState);
   const [repositoryOptionsState, setRepositoryOptionsState] = useState<AsyncState<RepositoryOption[]>>({
     data: [],
     loading: false,
@@ -207,24 +271,7 @@ export function App() {
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [setupStatusLoading, setSetupStatusLoading] = useState(false);
   const [setupStatusError, setSetupStatusError] = useState('');
-  const [setupGuideOpen, setSetupGuideOpen] = useState(loadInitialSetupGuideOpen);
-  const [groupsPanelOpen, setGroupsPanelOpen] = useState(loadInitialGroupsPanelOpen);
-  const [groupsPanelView, setGroupsPanelView] = useState<'group' | 'super_admins'>(loadInitialGroupsPanelView);
-  const [selectedGroupId, setSelectedGroupId] = useState(loadInitialGroupsPanelSelectedGroupId);
   const [newThreadGroupId, setNewThreadGroupId] = useState('');
-  const [groupFormName, setGroupFormName] = useState('');
-  const [groupFormVisibility, setGroupFormVisibility] = useState<SessionVisibility>('organization');
-  const [groupFormWritePolicy, setGroupFormWritePolicy] = useState<SessionWritePolicy>('group_members');
-  const [groupFormServerError, setGroupFormServerError] = useState('');
-  const [memberSearchQuery, setMemberSearchQuery] = useState('');
-  const [memberSearchLoading, setMemberSearchLoading] = useState(false);
-  const [memberUserId, setMemberUserId] = useState('');
-  const [memberRole, setMemberRole] = useState<GroupRole>('viewer');
-  const [superAdminSearchQuery, setSuperAdminSearchQuery] = useState('');
-  const [superAdminSearchLoading, setSuperAdminSearchLoading] = useState(false);
-  const [superAdminUserId, setSuperAdminUserId] = useState('');
-  const [superAdminUserOptions, setSuperAdminUserOptions] = useState<AuthUser[]>([]);
-  const [roleManagementUsers, setRoleManagementUsers] = useState<AuthUser[]>([]);
   const [newThreadModel, setNewThreadModel] = useState('');
   const [newThreadBranch, setNewThreadBranch] = useState('');
   const [newThreadPrompt, setNewThreadPrompt] = useState('');
@@ -252,7 +299,17 @@ export function App() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(initialConnectionStatus);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [composerFocused, setComposerFocused] = useState(false);
+  const {
+    selectedSessionId,
+    sidebarPanel,
+    isCreatingThread,
+    setupGuideOpen,
+    groupsPanelOpen,
+    groupsPanelView,
+    selectedGroupId,
+  } = navigation;
   const { messages, events, activeProgress, artifacts, services, externalResources, callbacks } = sessionDetail;
+  const { groupForm, memberSearch, superAdminSearch, roleManagementUsers } = accessGroupsState;
   const eventCursor = useRef(0);
   const globalEventCursor = useRef(0);
   const lastBackgroundedAt = useRef<number | null>(null);
@@ -300,8 +357,8 @@ export function App() {
   const canManageAllGroups = canCallApi && (!sessionAuthRequired || currentUser?.role === 'super_admin');
   const canManageGroups = canManageAllGroups || (canCallApi && manageableGroups.length > 0);
   const canViewGroups = canManageGroups || (canCallApi && sessionAuthRequired && groups.length > 0);
-  const groupFormValidationError = groupNameValidationError(groups, selectedGroupId, groupFormName);
-  const groupFormError = groupFormValidationError || groupFormServerError;
+  const groupFormValidationError = groupNameValidationError(groups, selectedGroupId, groupForm.name);
+  const groupFormError = groupFormValidationError || groupForm.serverError;
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedSessionId) ?? null,
     [sessions, selectedSessionId],
@@ -344,6 +401,98 @@ export function App() {
     selectedSessionId && detailLoadedSessionId !== selectedSessionId && !selectedSessionHasMessages,
   );
   const sortedSessions = useMemo(() => sortSessionsByLastActivity(sessions), [sessions]);
+
+  function updateNavigation(next: Partial<NavigationState>) {
+    setNavigation((current) => ({ ...current, ...next }));
+  }
+
+  function setSelectedSessionId(next: StateUpdate<string>) {
+    setNavigation((current) => ({
+      ...current,
+      selectedSessionId: resolveStateUpdate(next, current.selectedSessionId),
+    }));
+  }
+
+  function setSetupGuideOpen(setupGuideOpen: boolean) {
+    updateNavigation({ setupGuideOpen });
+  }
+
+  function setSelectedGroupId(next: StateUpdate<string>) {
+    setNavigation((current) => ({
+      ...current,
+      selectedGroupId: resolveStateUpdate(next, current.selectedGroupId),
+    }));
+  }
+
+  function updateGroupForm(next: Partial<AccessGroupFormState>) {
+    setAccessGroupsState((current) => ({ ...current, groupForm: { ...current.groupForm, ...next } }));
+  }
+
+  function updateMemberSearch(next: Partial<AccessGroupMemberSearchState>) {
+    setAccessGroupsState((current) => ({ ...current, memberSearch: { ...current.memberSearch, ...next } }));
+  }
+
+  function updateSuperAdminSearch(next: Partial<AccessGroupUserSearchState>) {
+    setAccessGroupsState((current) => ({
+      ...current,
+      superAdminSearch: { ...current.superAdminSearch, ...next },
+    }));
+  }
+
+  function setGroupFormVisibility(visibility: SessionVisibility) {
+    updateGroupForm({ visibility });
+  }
+
+  function setGroupFormWritePolicy(writePolicy: SessionWritePolicy) {
+    updateGroupForm({ writePolicy });
+  }
+
+  function setMemberSearchQuery(query: string) {
+    updateMemberSearch({ query });
+  }
+
+  function setMemberUserId(userId: string) {
+    updateMemberSearch({ userId });
+  }
+
+  function setMemberRole(role: GroupRole) {
+    updateMemberSearch({ role });
+  }
+
+  function setSuperAdminSearchQuery(query: string) {
+    updateSuperAdminSearch({ query });
+  }
+
+  function setSuperAdminUserId(userId: string) {
+    updateSuperAdminSearch({ userId });
+  }
+
+  function setUserOptions(next: StateUpdate<AuthUser[]>) {
+    setAccessGroupsState((current) => ({
+      ...current,
+      memberSearch: {
+        ...current.memberSearch,
+        options: resolveStateUpdate(next, current.memberSearch.options),
+      },
+    }));
+  }
+
+  function setSuperAdminUserOptions(next: StateUpdate<AuthUser[]>) {
+    setAccessGroupsState((current) => ({
+      ...current,
+      superAdminSearch: {
+        ...current.superAdminSearch,
+        options: resolveStateUpdate(next, current.superAdminSearch.options),
+      },
+    }));
+  }
+
+  function setRoleManagementUsers(next: StateUpdate<AuthUser[]>) {
+    setAccessGroupsState((current) => ({
+      ...current,
+      roleManagementUsers: resolveStateUpdate(next, current.roleManagementUsers),
+    }));
+  }
 
   useEffect(() => {
     if (!startupLoading || connectionStatus.state !== 'ok') return;
@@ -585,10 +734,12 @@ export function App() {
       setGroupMembers([]);
       return;
     }
-    setGroupFormName(group.name);
-    setGroupFormVisibility(group.defaultVisibility);
-    setGroupFormWritePolicy(group.defaultWritePolicy);
-    setGroupFormServerError('');
+    updateGroupForm({
+      name: group.name,
+      visibility: group.defaultVisibility,
+      writePolicy: group.defaultWritePolicy,
+      serverError: '',
+    });
     if (!groupsPanelOpen || !group.canManage) return;
     listGroupMembers({ groupId: group.id, token }).then(setGroupMembers).catch(handleApiError);
   }, [groupsPanelOpen, groups, groupsPanelView, selectedGroupId, token]);
@@ -613,63 +764,61 @@ export function App() {
   }, [groupsPanelOpen, canManageAllGroups, token]);
 
   useEffect(() => {
-    const query = memberSearchQuery.trim();
+    const query = memberSearch.query.trim();
     const group = groups.find((candidate) => candidate.id === selectedGroupId);
     if (groupsPanelView !== 'group' || !groupsPanelOpen || !group?.canManage) {
-      setUserOptions([]);
-      setMemberSearchLoading(false);
+      updateMemberSearch({ options: [], loading: false });
       return;
     }
     if (query.length < 2) {
-      setMemberSearchLoading(false);
+      updateMemberSearch({ loading: false });
       return;
     }
 
     let cancelled = false;
-    setMemberSearchLoading(true);
+    updateMemberSearch({ loading: true });
     listUsers({ query, token })
       .then((users) => {
-        if (!cancelled) setUserOptions(users);
+        if (!cancelled) updateMemberSearch({ options: users });
       })
       .catch(() => {
-        if (!cancelled) setUserOptions([]);
+        if (!cancelled) updateMemberSearch({ options: [] });
       })
       .finally(() => {
-        if (!cancelled) setMemberSearchLoading(false);
+        if (!cancelled) updateMemberSearch({ loading: false });
       });
     return () => {
       cancelled = true;
     };
-  }, [groupsPanelOpen, groups, groupsPanelView, memberSearchQuery, selectedGroupId, token]);
+  }, [groupsPanelOpen, groups, groupsPanelView, memberSearch.query, selectedGroupId, token]);
 
   useEffect(() => {
-    const query = superAdminSearchQuery.trim();
+    const query = superAdminSearch.query.trim();
     if (!groupsPanelOpen || !canManageAllGroups) {
-      setSuperAdminUserOptions([]);
-      setSuperAdminSearchLoading(false);
+      updateSuperAdminSearch({ options: [], loading: false });
       return;
     }
     if (query.length < 2) {
-      setSuperAdminSearchLoading(false);
+      updateSuperAdminSearch({ loading: false });
       return;
     }
 
     let cancelled = false;
-    setSuperAdminSearchLoading(true);
+    updateSuperAdminSearch({ loading: true });
     listUsers({ query, token })
       .then((users) => {
-        if (!cancelled) setSuperAdminUserOptions(users);
+        if (!cancelled) updateSuperAdminSearch({ options: users });
       })
       .catch(() => {
-        if (!cancelled) setSuperAdminUserOptions([]);
+        if (!cancelled) updateSuperAdminSearch({ options: [] });
       })
       .finally(() => {
-        if (!cancelled) setSuperAdminSearchLoading(false);
+        if (!cancelled) updateSuperAdminSearch({ loading: false });
       });
     return () => {
       cancelled = true;
     };
-  }, [groupsPanelOpen, canManageAllGroups, superAdminSearchQuery, token]);
+  }, [groupsPanelOpen, canManageAllGroups, superAdminSearch.query, token]);
 
   useEffect(() => {
     if (!pageVisible) {
@@ -969,7 +1118,7 @@ export function App() {
       eventCursor.current = 0;
       detailLoadedSessionIdRef.current = session.id;
       setDetailLoadedSessionId(session.id);
-      setIsCreatingThread(false);
+      updateNavigation({ isCreatingThread: false });
     } catch (err) {
       setNewThreadPrompt(firstPrompt);
       setNewThreadRepository(firstRepository);
@@ -1199,37 +1348,35 @@ export function App() {
     setSessions([]);
     setGroups([]);
     setGroupMembers([]);
-    setUserOptions([]);
-    setMemberSearchQuery('');
-    setMemberUserId('');
-    setSuperAdminSearchQuery('');
-    setSuperAdminUserId('');
-    setSuperAdminUserOptions([]);
-    setRoleManagementUsers([]);
+    setAccessGroupsState(emptyAccessGroupsState());
     setSessionsLoaded(false);
-    setSelectedSessionId('');
-    setIsCreatingThread(false);
+    updateNavigation({
+      selectedSessionId: '',
+      isCreatingThread: false,
+      setupGuideOpen: false,
+      groupsPanelOpen: false,
+    });
     clearSessionDetail();
-    setSetupGuideOpen(false);
     sessionStorage.removeItem(setupGuideOpenStorageKey);
-    setGroupsPanelOpen(false);
     setSetupStatus(null);
     setSetupStatusError('');
   }
 
   function startNewThread() {
     if (!canCreateThread) return;
-    setSetupGuideOpen(false);
     sessionStorage.removeItem(setupGuideOpenStorageKey);
-    setGroupsPanelOpen(false);
     sessionStorage.removeItem(groupsPanelOpenStorageKey);
     setSidebarOpen(false);
     setSidebarCollapsed(false);
     sessionStorage.removeItem(selectedSessionStorageKey);
     clearSessionSearchParam();
     sessionStorage.setItem(newSessionSelectedStorageKey, 'true');
-    setSelectedSessionId('');
-    setIsCreatingThread(true);
+    updateNavigation({
+      selectedSessionId: '',
+      isCreatingThread: true,
+      setupGuideOpen: false,
+      groupsPanelOpen: false,
+    });
     setFollowUpRepository('');
     setFollowUpBranch('');
     setFollowUpModel('');
@@ -1238,17 +1385,19 @@ export function App() {
   }
 
   function selectSession(sessionId: string) {
-    setSetupGuideOpen(false);
     sessionStorage.removeItem(setupGuideOpenStorageKey);
-    setGroupsPanelOpen(false);
     sessionStorage.removeItem(groupsPanelOpenStorageKey);
     autoScrolledSessionId.current = '';
     selectedSessionIdRef.current = sessionId;
     sessionStorage.setItem(selectedSessionStorageKey, sessionId);
     setSessionSearchParam(sessionId);
     sessionStorage.removeItem(newSessionSelectedStorageKey);
-    setSelectedSessionId(sessionId);
-    setIsCreatingThread(false);
+    updateNavigation({
+      selectedSessionId: sessionId,
+      isCreatingThread: false,
+      setupGuideOpen: false,
+      groupsPanelOpen: false,
+    });
     setFollowUpRepository('');
     setFollowUpBranch('');
     setFollowUpModel('');
@@ -1256,46 +1405,37 @@ export function App() {
   }
 
   function openSetupGuide() {
-    setSetupGuideOpen(true);
     sessionStorage.setItem(setupGuideOpenStorageKey, 'true');
-    setGroupsPanelOpen(false);
     sessionStorage.removeItem(groupsPanelOpenStorageKey);
+    updateNavigation({ setupGuideOpen: true, groupsPanelOpen: false });
     setSidebarOpen(false);
-  }
-
-  function setActiveSidebarPanel(panel: 'sessions' | 'groups') {
-    setSidebarPanel(panel);
-    sessionStorage.setItem(sidebarPanelStorageKey, panel);
   }
 
   function openGroupsPanel() {
     if (!canViewGroups) return;
     const desktop = isDesktopViewport();
-    setSetupGuideOpen(false);
     sessionStorage.removeItem(setupGuideOpenStorageKey);
-    setGroupsPanelOpen(true);
     sessionStorage.setItem(groupsPanelOpenStorageKey, 'true');
-    setActiveSidebarPanel('groups');
+    sessionStorage.setItem(sidebarPanelStorageKey, 'groups');
+    updateNavigation({ setupGuideOpen: false, groupsPanelOpen: true, sidebarPanel: 'groups' });
     setSidebarCollapsed(false);
     setSidebarOpen(!desktop);
   }
 
   function showSessionsSidebar() {
-    setSetupGuideOpen(false);
     sessionStorage.removeItem(setupGuideOpenStorageKey);
-    setGroupsPanelOpen(false);
     sessionStorage.removeItem(groupsPanelOpenStorageKey);
-    setActiveSidebarPanel('sessions');
+    sessionStorage.setItem(sidebarPanelStorageKey, 'sessions');
+    updateNavigation({ setupGuideOpen: false, groupsPanelOpen: false, sidebarPanel: 'sessions' });
     setSidebarCollapsed(false);
     setSidebarOpen(true);
   }
 
   function backToSessionsSidebar() {
-    setSetupGuideOpen(false);
     sessionStorage.removeItem(setupGuideOpenStorageKey);
-    setGroupsPanelOpen(false);
     sessionStorage.removeItem(groupsPanelOpenStorageKey);
-    setActiveSidebarPanel('sessions');
+    sessionStorage.setItem(sidebarPanelStorageKey, 'sessions');
+    updateNavigation({ setupGuideOpen: false, groupsPanelOpen: false, sidebarPanel: 'sessions' });
     setSidebarCollapsed(false);
     setSidebarOpen(true);
   }
@@ -1312,42 +1452,40 @@ export function App() {
         token,
       });
       await refreshGroups();
-      setGroupsPanelView('group');
       sessionStorage.setItem(groupsPanelViewStorageKey, 'group');
       sessionStorage.setItem(groupsPanelSelectedGroupStorageKey, group.id);
-      setSelectedGroupId(group.id);
+      updateNavigation({ groupsPanelView: 'group', selectedGroupId: group.id });
     } catch (err) {
       handleApiError(err);
     }
   }
 
   function handleGroupFormNameChange(value: string) {
-    setGroupFormName(value);
-    setGroupFormServerError('');
+    updateGroupForm({ name: value, serverError: '' });
   }
 
   async function handleSaveGroup() {
     const group = groups.find((candidate) => candidate.id === selectedGroupId);
-    if (!group?.canManage || !groupFormName.trim()) return;
-    const validationError = groupNameValidationError(groups, group.id, groupFormName);
+    if (!group?.canManage || !groupForm.name.trim()) return;
+    const validationError = groupNameValidationError(groups, group.id, groupForm.name);
     if (validationError) {
-      setGroupFormServerError(validationError);
+      updateGroupForm({ serverError: validationError });
       return;
     }
     setError('');
-    setGroupFormServerError('');
+    updateGroupForm({ serverError: '' });
     try {
       const updated = await updateGroup({
         groupId: group.id,
-        name: groupFormName.trim(),
-        defaultVisibility: groupFormVisibility,
-        defaultWritePolicy: groupFormWritePolicy,
+        name: groupForm.name.trim(),
+        defaultVisibility: groupForm.visibility,
+        defaultWritePolicy: groupForm.writePolicy,
         token,
       });
       setGroups((current) => current.map((candidate) => (candidate.id === updated.id ? updated : candidate)));
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        setGroupFormServerError('An access group with this name already exists.');
+        updateGroupForm({ serverError: 'An access group with this name already exists.' });
         return;
       }
       handleApiError(err);
@@ -1375,15 +1513,13 @@ export function App() {
 
   async function handleAddGroupMember() {
     const group = groups.find((candidate) => candidate.id === selectedGroupId);
-    const userId = memberUserId.trim();
+    const userId = memberSearch.userId.trim();
     if (!group?.canManage || !userId) return;
     setError('');
     try {
-      const member = await upsertGroupMember({ groupId: group.id, userId, role: memberRole, token });
+      const member = await upsertGroupMember({ groupId: group.id, userId, role: memberSearch.role, token });
       setGroupMembers((current) => [member, ...current.filter((candidate) => candidate.userId !== member.userId)]);
-      setMemberUserId('');
-      setMemberSearchQuery('');
-      setUserOptions([]);
+      updateMemberSearch({ userId: '', query: '', options: [] });
       await refreshGroups();
     } catch (err) {
       handleApiError(err);
@@ -1417,12 +1553,11 @@ export function App() {
   }
 
   function selectMemberUser(userId: string) {
-    setMemberUserId(userId);
-    setMemberSearchQuery('');
+    updateMemberSearch({ userId, query: '' });
   }
 
   async function handlePromoteSuperAdmin() {
-    const userId = superAdminUserId.trim();
+    const userId = superAdminSearch.userId.trim();
     if (!canManageAllGroups || !userId) return;
     setError('');
     try {
@@ -1435,17 +1570,14 @@ export function App() {
       setUserOptions((current) =>
         current.map((candidate) => (candidate.id === promoted.id ? { ...candidate, role: promoted.role } : candidate)),
       );
-      setSuperAdminUserId('');
-      setSuperAdminSearchQuery('');
-      setSuperAdminUserOptions([]);
+      updateSuperAdminSearch({ userId: '', query: '', options: [] });
     } catch (err) {
       handleApiError(err);
     }
   }
 
   function selectSuperAdminUser(userId: string) {
-    setSuperAdminUserId(userId);
-    setSuperAdminSearchQuery('');
+    updateSuperAdminSearch({ userId, query: '' });
   }
 
   async function handleRemoveSuperAdmin(userId: string) {
@@ -1466,17 +1598,33 @@ export function App() {
   }
 
   function selectGroupPanel(groupId: string) {
-    setGroupsPanelView('group');
+    sessionStorage.removeItem(setupGuideOpenStorageKey);
+    sessionStorage.setItem(groupsPanelOpenStorageKey, 'true');
+    sessionStorage.setItem(sidebarPanelStorageKey, 'groups');
     sessionStorage.setItem(groupsPanelViewStorageKey, 'group');
     sessionStorage.setItem(groupsPanelSelectedGroupStorageKey, groupId);
-    setSelectedGroupId(groupId);
+    updateNavigation({
+      setupGuideOpen: false,
+      groupsPanelOpen: true,
+      sidebarPanel: 'groups',
+      groupsPanelView: 'group',
+      selectedGroupId: groupId,
+    });
     if (!isDesktopViewport()) setSidebarOpen(false);
   }
 
   function selectSuperAdminsPanel() {
     if (!canManageAllGroups) return;
-    setGroupsPanelView('super_admins');
+    sessionStorage.removeItem(setupGuideOpenStorageKey);
+    sessionStorage.setItem(groupsPanelOpenStorageKey, 'true');
+    sessionStorage.setItem(sidebarPanelStorageKey, 'groups');
     sessionStorage.setItem(groupsPanelViewStorageKey, 'super_admins');
+    updateNavigation({
+      setupGuideOpen: false,
+      groupsPanelOpen: true,
+      sidebarPanel: 'groups',
+      groupsPanelView: 'super_admins',
+    });
     if (!isDesktopViewport()) setSidebarOpen(false);
   }
 
@@ -1581,8 +1729,10 @@ export function App() {
       sessionStorage.setItem(selectedSessionStorageKey, rollback.selectedSessionId);
       setSessionSearchParam(rollback.selectedSessionId);
       sessionStorage.removeItem(newSessionSelectedStorageKey);
-      setSelectedSessionId(rollback.selectedSessionId);
-      setIsCreatingThread(rollback.isCreatingThread);
+      updateNavigation({
+        selectedSessionId: rollback.selectedSessionId,
+        isCreatingThread: rollback.isCreatingThread,
+      });
       setSessionDetail(rollback.sessionDetail);
     }
   }
@@ -1608,8 +1758,7 @@ export function App() {
       sessionStorage.removeItem(selectedSessionStorageKey);
       clearSessionSearchParam();
       sessionStorage.setItem(newSessionSelectedStorageKey, 'true');
-      setSelectedSessionId('');
-      setIsCreatingThread(true);
+      updateNavigation({ selectedSessionId: '', isCreatingThread: true });
       clearSessionDetail();
       eventCursor.current = 0;
     }
@@ -1839,22 +1988,13 @@ export function App() {
                     currentUser={currentUser}
                     groupMembers={groupMembers}
                     groups={groups}
+                    groupForm={groupForm}
                     groupFormError={groupFormError}
-                    groupFormName={groupFormName}
-                    groupFormVisibility={groupFormVisibility}
-                    groupFormWritePolicy={groupFormWritePolicy}
-                    memberRole={memberRole}
-                    memberSearchLoading={memberSearchLoading}
-                    memberSearchQuery={memberSearchQuery}
-                    memberUserId={memberUserId}
+                    memberSearch={memberSearch}
                     selectedView={groupsPanelView}
                     selectedGroupId={selectedGroupId}
-                    superAdminSearchLoading={superAdminSearchLoading}
-                    superAdminSearchQuery={superAdminSearchQuery}
-                    superAdminUserId={superAdminUserId}
-                    superAdminUserOptions={superAdminUserOptions}
+                    superAdminSearch={superAdminSearch}
                     superAdminUsers={currentSuperAdminUsers}
-                    users={userOptions}
                     showOpenSidebar={!sidebarOpen}
                     onAddMember={handleAddGroupMember}
                     onArchiveGroup={handleArchiveGroup}

@@ -1,4 +1,9 @@
 export { GroupsPanel, GroupsSidebar, SessionAccessPanel } from './app-panels/access-groups-panel.js';
+export type {
+  AccessGroupFormState,
+  AccessGroupMemberSearchState,
+  AccessGroupUserSearchState,
+} from './app-panels/access-groups-panel.js';
 export {
   ArchivedSessionNotice,
   AppNoticesBanner,

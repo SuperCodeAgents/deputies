@@ -21,6 +21,24 @@ import type { ConnectionStatus, ThemePreference } from './types.js';
 
 const archivedGroupsOpenStorageKey = 'deputies-archived-groups-open';
 
+export type AccessGroupFormState = {
+  name: string;
+  visibility: SessionVisibility;
+  writePolicy: SessionWritePolicy;
+  serverError: string;
+};
+
+export type AccessGroupUserSearchState = {
+  query: string;
+  loading: boolean;
+  userId: string;
+  options: AuthUser[];
+};
+
+export type AccessGroupMemberSearchState = AccessGroupUserSearchState & {
+  role: GroupRole;
+};
+
 export function GroupsSidebar(props: {
   authRequired: boolean;
   canCreateGroups: boolean;
@@ -244,22 +262,13 @@ export function GroupsPanel(props: {
   currentUser: AuthUser | null;
   groupMembers: GroupMember[];
   groups: Group[];
+  groupForm: AccessGroupFormState;
   groupFormError: string;
-  groupFormName: string;
-  groupFormVisibility: SessionVisibility;
-  groupFormWritePolicy: SessionWritePolicy;
-  memberRole: GroupRole;
-  memberSearchLoading: boolean;
-  memberSearchQuery: string;
-  memberUserId: string;
+  memberSearch: AccessGroupMemberSearchState;
   selectedGroupId: string;
   selectedView: 'group' | 'super_admins';
-  superAdminSearchLoading: boolean;
-  superAdminSearchQuery: string;
-  superAdminUserId: string;
-  superAdminUserOptions: AuthUser[];
+  superAdminSearch: AccessGroupUserSearchState;
   superAdminUsers: AuthUser[];
-  users: AuthUser[];
   showOpenSidebar: boolean;
   onAddMember: () => void;
   onArchiveGroup: (groupId: string, archived: boolean) => void;
@@ -284,8 +293,10 @@ export function GroupsPanel(props: {
   onUpdateMemberRole: (userId: string, role: GroupRole) => void;
 }) {
   const selectedGroup = props.groups.find((group) => group.id === props.selectedGroupId) ?? null;
-  const selectedMemberUser = props.users.find((user) => user.id === props.memberUserId);
-  const selectedSuperAdminUser = props.superAdminUserOptions.find((user) => user.id === props.superAdminUserId);
+  const selectedMemberUser = props.memberSearch.options.find((user) => user.id === props.memberSearch.userId);
+  const selectedSuperAdminUser = props.superAdminSearch.options.find(
+    (user) => user.id === props.superAdminSearch.userId,
+  );
 
   return (
     <section className="h-full overflow-auto px-3 py-6 md:px-8 xl:px-20">
@@ -315,12 +326,9 @@ export function GroupsPanel(props: {
           {props.selectedView === 'super_admins' && props.canCreateGroups ? (
             <SuperAdminsPanel
               currentUser={props.currentUser}
-              searchLoading={props.superAdminSearchLoading}
-              searchQuery={props.superAdminSearchQuery}
+              search={props.superAdminSearch}
               selectedUser={selectedSuperAdminUser}
-              superAdminUserId={props.superAdminUserId}
               superAdminUsers={props.superAdminUsers}
-              userOptions={props.superAdminUserOptions}
               onPromoteSuperAdmin={props.onPromoteSuperAdmin}
               onRemoveSuperAdmin={props.onRemoveSuperAdmin}
               onSearchQueryChange={props.onSuperAdminSearchQueryChange}
@@ -332,17 +340,11 @@ export function GroupsPanel(props: {
               <ManagedGroupPanel
                 group={selectedGroup}
                 currentUser={props.currentUser}
+                groupForm={props.groupForm}
                 groupFormError={props.groupFormError}
-                groupFormName={props.groupFormName}
-                groupFormVisibility={props.groupFormVisibility}
-                groupFormWritePolicy={props.groupFormWritePolicy}
                 groupMembers={props.groupMembers}
-                memberRole={props.memberRole}
-                memberSearchLoading={props.memberSearchLoading}
-                memberSearchQuery={props.memberSearchQuery}
-                memberUserId={props.memberUserId}
+                memberSearch={props.memberSearch}
                 selectedMemberUser={selectedMemberUser}
-                users={props.users}
                 onAddMember={props.onAddMember}
                 onArchiveGroup={props.onArchiveGroup}
                 onGroupFormNameChange={props.onGroupFormNameChange}
@@ -370,12 +372,9 @@ export function GroupsPanel(props: {
 
 function SuperAdminsPanel(props: {
   currentUser: AuthUser | null;
-  searchLoading: boolean;
-  searchQuery: string;
+  search: AccessGroupUserSearchState;
   selectedUser: AuthUser | undefined;
-  superAdminUserId: string;
   superAdminUsers: AuthUser[];
-  userOptions: AuthUser[];
   onPromoteSuperAdmin: () => void;
   onRemoveSuperAdmin: (userId: string) => void;
   onSearchQueryChange: (value: string) => void;
@@ -414,17 +413,17 @@ function SuperAdminsPanel(props: {
         <label className="grid gap-1 text-sm">
           <span className="text-xs font-medium text-muted-foreground">Find user</span>
           <Input
-            value={props.searchQuery}
+            value={props.search.query}
             onChange={(event) => props.onSearchQueryChange(event.target.value)}
             placeholder="Search by username, display name, or exact user ID"
           />
         </label>
-        {props.searchQuery.trim().length < 2 ? (
+        {props.search.query.trim().length < 2 ? (
           <p className="text-xs text-muted-foreground">Type at least 2 characters to search users.</p>
-        ) : props.searchLoading ? (
+        ) : props.search.loading ? (
           <p className="text-xs text-muted-foreground">Searching users...</p>
-        ) : props.userOptions.length ? (
-          <UserOptions users={props.userOptions} showRoles onSelectUser={props.onSelectUser} />
+        ) : props.search.options.length ? (
+          <UserOptions users={props.search.options} showRoles onSelectUser={props.onSelectUser} />
         ) : (
           <p className="text-xs text-muted-foreground">No matching users.</p>
         )}
@@ -432,7 +431,7 @@ function SuperAdminsPanel(props: {
           <label className="grid gap-1 text-sm">
             <span className="text-xs font-medium text-muted-foreground">User ID</span>
             <Input
-              value={props.superAdminUserId}
+              value={props.search.userId}
               onChange={(event) => props.onUserIdChange(event.target.value)}
               placeholder="Select a user or paste user ID"
             />
@@ -441,7 +440,7 @@ function SuperAdminsPanel(props: {
           <Button
             className="sm:mt-5"
             onClick={props.onPromoteSuperAdmin}
-            disabled={!props.superAdminUserId.trim() || props.selectedUser?.role === 'super_admin'}
+            disabled={!props.search.userId.trim() || props.selectedUser?.role === 'super_admin'}
           >
             Promote
           </Button>
@@ -454,17 +453,11 @@ function SuperAdminsPanel(props: {
 function ManagedGroupPanel(props: {
   currentUser: AuthUser | null;
   group: Group;
+  groupForm: AccessGroupFormState;
   groupFormError: string;
-  groupFormName: string;
-  groupFormVisibility: SessionVisibility;
-  groupFormWritePolicy: SessionWritePolicy;
   groupMembers: GroupMember[];
-  memberRole: GroupRole;
-  memberSearchLoading: boolean;
-  memberSearchQuery: string;
-  memberUserId: string;
+  memberSearch: AccessGroupMemberSearchState;
   selectedMemberUser: AuthUser | undefined;
-  users: AuthUser[];
   onAddMember: () => void;
   onArchiveGroup: (groupId: string, archived: boolean) => void;
   onGroupFormNameChange: (value: string) => void;
@@ -497,7 +490,7 @@ function ManagedGroupPanel(props: {
           <label className="grid gap-1 text-sm sm:col-span-3">
             <span className="text-xs font-medium text-muted-foreground">Name</span>
             <Input
-              value={props.groupFormName}
+              value={props.groupForm.name}
               onChange={(event) => props.onGroupFormNameChange(event.target.value)}
               aria-invalid={Boolean(props.groupFormError)}
             />
@@ -510,7 +503,7 @@ function ManagedGroupPanel(props: {
           <label className="grid gap-1 text-sm">
             <span className="text-xs font-medium text-muted-foreground">Default visibility</span>
             <SelectWithCaret
-              value={props.groupFormVisibility}
+              value={props.groupForm.visibility}
               onChange={(event) => props.onGroupFormVisibilityChange(event.target.value as SessionVisibility)}
             >
               <option value="organization">Organization</option>
@@ -520,7 +513,7 @@ function ManagedGroupPanel(props: {
           <label className="grid gap-1 text-sm sm:col-span-2">
             <span className="text-xs font-medium text-muted-foreground">Default write policy</span>
             <SelectWithCaret
-              value={props.groupFormWritePolicy}
+              value={props.groupForm.writePolicy}
               onChange={(event) => props.onGroupFormWritePolicyChange(event.target.value as SessionWritePolicy)}
             >
               <option value="group_members">Group members</option>
@@ -529,7 +522,7 @@ function ManagedGroupPanel(props: {
           </label>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button onClick={props.onSaveGroup} disabled={!props.groupFormName.trim() || Boolean(props.groupFormError)}>
+          <Button onClick={props.onSaveGroup} disabled={!props.groupForm.name.trim() || Boolean(props.groupFormError)}>
             Save group
           </Button>
           <Button variant="secondary" onClick={() => props.onArchiveGroup(props.group.id, !props.group.archivedAt)}>
@@ -578,17 +571,17 @@ function ManagedGroupPanel(props: {
           <label className="grid gap-1 text-sm">
             <span className="text-xs font-medium text-muted-foreground">Find user</span>
             <Input
-              value={props.memberSearchQuery}
+              value={props.memberSearch.query}
               onChange={(event) => props.onMemberSearchQueryChange(event.target.value)}
               placeholder="Search by username, display name, or exact user ID"
             />
           </label>
-          {props.memberSearchQuery.trim().length < 2 ? (
+          {props.memberSearch.query.trim().length < 2 ? (
             <p className="text-xs text-muted-foreground">Type at least 2 characters to search users.</p>
-          ) : props.memberSearchLoading ? (
+          ) : props.memberSearch.loading ? (
             <p className="text-xs text-muted-foreground">Searching users...</p>
-          ) : props.users.length ? (
-            <UserOptions users={props.users} onSelectUser={props.onSelectMemberUser} />
+          ) : props.memberSearch.options.length ? (
+            <UserOptions users={props.memberSearch.options} onSelectUser={props.onSelectMemberUser} />
           ) : (
             <p className="text-xs text-muted-foreground">No matching users.</p>
           )}
@@ -596,7 +589,7 @@ function ManagedGroupPanel(props: {
             <label className="grid gap-1 text-sm">
               <span className="text-xs font-medium text-muted-foreground">User ID</span>
               <Input
-                value={props.memberUserId}
+                value={props.memberSearch.userId}
                 onChange={(event) => props.onMemberUserIdChange(event.target.value)}
                 placeholder="Select a user or paste user ID"
               />
@@ -605,7 +598,7 @@ function ManagedGroupPanel(props: {
             <label className="grid gap-1 text-sm">
               <span className="text-xs font-medium text-muted-foreground">Role</span>
               <SelectWithCaret
-                value={props.memberRole}
+                value={props.memberSearch.role}
                 onChange={(event) => props.onMemberRoleChange(event.target.value as GroupRole)}
               >
                 <option value="viewer">Viewer</option>
@@ -613,7 +606,7 @@ function ManagedGroupPanel(props: {
                 <option value="admin">Admin</option>
               </SelectWithCaret>
             </label>
-            <Button className="sm:mt-5" onClick={props.onAddMember} disabled={!props.memberUserId.trim()}>
+            <Button className="sm:mt-5" onClick={props.onAddMember} disabled={!props.memberSearch.userId.trim()}>
               Add member
             </Button>
           </div>
