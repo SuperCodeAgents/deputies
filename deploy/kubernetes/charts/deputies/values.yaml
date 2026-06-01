@@ -84,6 +84,11 @@ config:
   authProvider: static
   authCookieSecure: 'true'
   authCookieSameSite: lax
+  authGithubAdminUsers: ''
+  authGithubAllowedUsers: ''
+  authGithubAllowedOrganizations: ''
+  authGithubDefaultGroupRole: member
+  unsafeAuthGithubAllowAll: 'false'
   webBaseUrl: https://deputies-k8s.localhost
   serviceBaseDomain: deputies-k8s.localhost
   serviceTrustForwardedHosts: 'true'

@@ -6,6 +6,11 @@ services:
     environment:
       API_AUTH_MODE: none
       AUTH_PROVIDER: static
+      AUTH_GITHUB_ADMIN_USERS: ''
+      AUTH_GITHUB_ALLOWED_USERS: ''
+      AUTH_GITHUB_ALLOWED_ORGANIZATIONS: ''
+      AUTH_GITHUB_DEFAULT_GROUP_ROLE: member
+      UNSAFE_AUTH_GITHUB_ALLOW_ALL: 'false'
       APP_DATA_STORE: postgres
       DATABASE_URL: postgres://flue:flue@postgres:5432/flue
       RUNNER: fake
@@ -29,6 +34,11 @@ services:
     environment:
       API_AUTH_MODE: none
       AUTH_PROVIDER: static
+      AUTH_GITHUB_ADMIN_USERS: ''
+      AUTH_GITHUB_ALLOWED_USERS: ''
+      AUTH_GITHUB_ALLOWED_ORGANIZATIONS: ''
+      AUTH_GITHUB_DEFAULT_GROUP_ROLE: member
+      UNSAFE_AUTH_GITHUB_ALLOW_ALL: 'false'
       APP_DATA_STORE: postgres
       RUNNER: fake
       SANDBOX_PROVIDER: fake

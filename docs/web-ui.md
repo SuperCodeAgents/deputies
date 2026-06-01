@@ -105,7 +105,7 @@ The UI supports all product API auth modes exposed by `/health`:
 
 `API_AUTH_MODE` is required. Browser-facing deployments use `session`. Reserve `bearer` for development tooling or programmatic/internal API access, and use `none` only for intentional local or test no-auth runs.
 
-Session-cookie auth is an API access gate only. Product sessions remain multiplayer/shared by default: authenticated users can list and open the same global session set, and sessions are not currently owned by, filtered to, or authorized per authenticated user. Treat per-user session ownership/authorization as future work for a comprehensive users/organizations/RBAC push rather than a narrow session-only patch.
+Session-cookie auth enables access-group RBAC for browser-facing product routes. Sessions belong to one access group and use group/organization visibility plus group-members/creator-only write policies. See [Access Groups](./access-groups.md) for roles, defaults, archived-group behavior, and GitHub auth allowlists.
 
 Local static session-auth example:
 
@@ -131,14 +131,15 @@ GITHUB_OAUTH_CLIENT_ID=Iv1.example
 GITHUB_OAUTH_CLIENT_SECRET=github-app-client-secret
 GITHUB_OAUTH_CALLBACK_URL=http://localhost:5173/auth/oauth/github/callback
 AUTH_GITHUB_ADMIN_USERS=your-github-login
-# Optional read-only viewers:
-# AUTH_GITHUB_VIEWER_USERS=teammate-login
-# AUTH_GITHUB_VIEWER_ORGANIZATIONS=your-org
+# Optional non-admin sign-in allowlist:
+# AUTH_GITHUB_ALLOWED_USERS=teammate-login
+# AUTH_GITHUB_ALLOWED_ORGANIZATIONS=your-org
+# AUTH_GITHUB_DEFAULT_GROUP_ROLE=member
 ```
 
 For GitHub App login, configure the GitHub App's callback URL to exactly match `GITHUB_OAUTH_CALLBACK_URL`. The same GitHub App can also provide runtime repository access through `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY`; those are separate values from the app's user-authorization client ID and client secret.
 
-GitHub users in `AUTH_GITHUB_ADMIN_*` allowlists are admins. Users in `AUTH_GITHUB_VIEWER_*` are read-only and cannot mutate sessions or access sandbox services.
+GitHub users in `AUTH_GITHUB_ADMIN_USERS` are super admins and are restored to that role on login. Users or organizations in `AUTH_GITHUB_ALLOWED_*` can sign in as regular users and receive default-group access from `AUTH_GITHUB_DEFAULT_GROUP_ROLE`.
 
 Set `WEB_BASE_URL` to the externally reachable web UI origin when Slack/GitHub callbacks should include an “open session” link. The API appends `?session=<id>` to that URL, and the web UI opens the matching session when present.
 
@@ -157,6 +158,7 @@ The SSE client uses `fetch()` streaming instead of native `EventSource` because 
 - Edit or cancel pending queued messages.
 - Request cancellation of an active run.
 - Archive and restore sessions. Archived sessions are read-only until restored.
+- Manage access groups, group members, group defaults, archived groups, and super admins when the signed-in user has sufficient access.
 - Replay and stream session events internally, rendering assistant text in the transcript and non-text run/message events as collapsible diagnostics.
 - List session artifacts in the context panel.
 - Render run-created image and text artifacts inline with the relevant transcript group when they are safe to preview.

@@ -11,9 +11,11 @@ import {
   Session,
   apiConnectionDelayedEvent,
   apiConnectionOkEvent,
+  archiveGroup,
   archiveSession,
   cancelCurrentRun,
   cancelMessage,
+  createGroup,
   createSession,
   enqueueMessage,
   extendSandbox,
@@ -26,28 +28,41 @@ import {
   login,
   listArtifacts,
   listCallbacks,
+  listGroupMembers,
+  listGroups,
   listEvents,
   listExternalResources,
   listMessages,
   listRepositoryOptions,
   listServices,
   listSessions,
+  listUsers,
   logout,
   openWorkspaceTool,
   pauseQueue,
   replayCallback,
+  removeGroupMember,
   resumeQueue,
   retryMessage,
   streamGlobalEvents,
   unarchiveSession,
   updateMessage,
+  updateGroup,
   updateSession,
+  updateSessionAccess,
+  updateUserRole,
+  upsertGroupMember,
   type Health,
   type AuthUser,
   type BranchOption,
+  type Group,
+  type GroupMember,
+  type GroupRole,
   type ModelChoice,
   type RepositoryOption,
   type SetupStatus,
+  type SessionVisibility,
+  type SessionWritePolicy,
   type WorkspaceToolId,
 } from './api.js';
 import { Button } from './components/ui/button.js';
@@ -55,13 +70,20 @@ import {
   archivedSessionsOpenStorageKey,
   applyThemePreference,
   connectionDelayedMessage,
+  groupsPanelOpenStorageKey,
+  groupsPanelSelectedGroupStorageKey,
+  groupsPanelViewStorageKey,
   initialConnectionStatus,
   isPageVisible,
   isStreamConnectionOk,
   isThreadComposerFocused,
   isThreadNearBottom,
   isWakeRecoveryStatus,
+  loadInitialGroupsPanelOpen,
+  loadInitialGroupsPanelSelectedGroupId,
+  loadInitialGroupsPanelView,
   loadInitialIsCreatingThread,
+  loadInitialSetupGuideOpen,
   loadInitialSelectedSessionId,
   loadStoredToken,
   loadThemePreference,
@@ -70,6 +92,7 @@ import {
   realtimeReconnectMaxDelayMs,
   scrollThreadByWheel,
   selectedSessionStorageKey,
+  setupGuideOpenStorageKey,
   shouldLetWheelTargetHandleScroll,
   startupConnectionDelayMs,
   startupDelayedConnectionStatus,
@@ -88,8 +111,11 @@ import {
   LocalSandboxWarning,
   MessageComposer,
   NewThreadPanel,
+  SessionAccessPanel,
   SessionAuthPanel,
   SetupGuidePanel,
+  GroupsPanel,
+  GroupsSidebar,
   StartupLoadingPanel,
   ThreadHeader,
   ThreadSidebar,
@@ -101,6 +127,9 @@ export function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState(loadStoredToken);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
+  const [userOptions, setUserOptions] = useState<AuthUser[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>(loadInitialSelectedSessionId);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -119,7 +148,24 @@ export function App() {
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [setupStatusLoading, setSetupStatusLoading] = useState(false);
   const [setupStatusError, setSetupStatusError] = useState('');
-  const [setupGuideOpen, setSetupGuideOpen] = useState(false);
+  const [setupGuideOpen, setSetupGuideOpen] = useState(loadInitialSetupGuideOpen);
+  const [groupsPanelOpen, setGroupsPanelOpen] = useState(loadInitialGroupsPanelOpen);
+  const [groupsPanelView, setGroupsPanelView] = useState<'group' | 'super_admins'>(loadInitialGroupsPanelView);
+  const [selectedGroupId, setSelectedGroupId] = useState(loadInitialGroupsPanelSelectedGroupId);
+  const [newThreadGroupId, setNewThreadGroupId] = useState('');
+  const [groupFormName, setGroupFormName] = useState('');
+  const [groupFormVisibility, setGroupFormVisibility] = useState<SessionVisibility>('organization');
+  const [groupFormWritePolicy, setGroupFormWritePolicy] = useState<SessionWritePolicy>('group_members');
+  const [groupFormServerError, setGroupFormServerError] = useState('');
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [memberSearchLoading, setMemberSearchLoading] = useState(false);
+  const [memberUserId, setMemberUserId] = useState('');
+  const [memberRole, setMemberRole] = useState<GroupRole>('viewer');
+  const [superAdminSearchQuery, setSuperAdminSearchQuery] = useState('');
+  const [superAdminSearchLoading, setSuperAdminSearchLoading] = useState(false);
+  const [superAdminUserId, setSuperAdminUserId] = useState('');
+  const [superAdminUserOptions, setSuperAdminUserOptions] = useState<AuthUser[]>([]);
+  const [roleManagementUsers, setRoleManagementUsers] = useState<AuthUser[]>([]);
   const [repositoryOptionsLoading, setRepositoryOptionsLoading] = useState(false);
   const [repositoryOptionsError, setRepositoryOptionsError] = useState('');
   const [branchOptionsLoading, setBranchOptionsLoading] = useState(false);
@@ -138,7 +184,7 @@ export function App() {
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [archivedSessionsOpen, setArchivedSessionsOpen] = useState(
-    () => localStorage.getItem(archivedSessionsOpenStorageKey) === 'true',
+    () => sessionStorage.getItem(archivedSessionsOpenStorageKey) === 'true',
   );
   const [themePreference, setThemePreference] = useState<ThemePreference>(loadThemePreference);
   const [error, setError] = useState<string>('');
@@ -179,17 +225,43 @@ export function App() {
   const waitingForAuth = !healthChecked || (health && sessionAuthRequired && !authChecked);
   const canCallApi =
     Boolean(health) && (!bearerAuthRequired || Boolean(token)) && (!sessionAuthRequired || Boolean(currentUser));
-  const canAdmin = canCallApi && (!sessionAuthRequired || currentUser?.role === 'admin');
+  const activeGroups = groups.filter((group) => !group.archivedAt);
+  const creatableGroups = sessionAuthRequired ? activeGroups.filter((group) => group.canCreateSessions) : activeGroups;
+  const manageableGroups = groups.filter((group) => group.canManage);
+  const currentSuperAdminUsers = useMemo(() => {
+    const superAdmins = roleManagementUsers.filter((user) => user.role === 'super_admin');
+    if (currentUser?.role !== 'super_admin' || superAdmins.some((user) => user.id === currentUser.id))
+      return superAdmins;
+    return upsertAuthUser(superAdmins, currentUser);
+  }, [currentUser, roleManagementUsers]);
+  const canManageAllGroups = canCallApi && (!sessionAuthRequired || currentUser?.role === 'super_admin');
+  const canManageGroups = canManageAllGroups || (canCallApi && manageableGroups.length > 0);
+  const canViewGroups = canManageGroups || (canCallApi && sessionAuthRequired && groups.length > 0);
+  const groupFormValidationError = groupNameValidationError(groups, selectedGroupId, groupFormName);
+  const groupFormError = groupFormValidationError || groupFormServerError;
+  const selectedSession = useMemo(
+    () => sessions.find((session) => session.id === selectedSessionId) ?? null,
+    [sessions, selectedSessionId],
+  );
+  const canCreateThread =
+    canCallApi &&
+    (!sessionAuthRequired ||
+      (currentUser?.role === 'super_admin' && activeGroups.length > 0) ||
+      creatableGroups.length > 0);
+  const canWriteSelectedSession = selectedSession ? userCanWriteSession(selectedSession) : canCreateThread;
+  const canManageSelectedSessionAccess = Boolean(
+    selectedSession &&
+    canCallApi &&
+    (!sessionAuthRequired ||
+      currentUser?.role === 'super_admin' ||
+      groupCanManage(groups, selectedSession.ownerGroupId)),
+  );
   const canViewSetup = canCallApi;
   const defaultSetupGuidePending = Boolean(
     canViewSetup && health && !health.hideSetupPage && !defaultSetupGuideOpenedRef.current,
   );
   const showingSetupGuide = setupGuideOpen || defaultSetupGuidePending;
   const startupLoading = waitingForAuth || (canCallApi && !sessionsLoaded);
-  const selectedSession = useMemo(
-    () => sessions.find((session) => session.id === selectedSessionId) ?? null,
-    [sessions, selectedSessionId],
-  );
   const selectedRepository = repositoryLabel(selectedSession?.context?.repository);
   const selectedSessionModel = typeof selectedSession?.context?.model === 'string' ? selectedSession.context.model : '';
   const availableModelValues = modelChoices.filter((model) => model.available).map((model) => model.value);
@@ -445,6 +517,103 @@ export function App() {
   }, [canCallApi, token]);
 
   useEffect(() => {
+    if (!canCallApi) return;
+    refreshGroups().catch(() => undefined);
+  }, [canCallApi, token]);
+
+  useEffect(() => {
+    const group = groupsPanelView === 'group' ? groups.find((candidate) => candidate.id === selectedGroupId) : null;
+    if (!group) {
+      setGroupMembers([]);
+      return;
+    }
+    setGroupFormName(group.name);
+    setGroupFormVisibility(group.defaultVisibility);
+    setGroupFormWritePolicy(group.defaultWritePolicy);
+    setGroupFormServerError('');
+    if (!groupsPanelOpen || !group.canManage) return;
+    listGroupMembers({ groupId: group.id, token }).then(setGroupMembers).catch(handleApiError);
+  }, [groupsPanelOpen, groups, groupsPanelView, selectedGroupId, token]);
+
+  useEffect(() => {
+    if (!groupsPanelOpen || !canManageAllGroups) {
+      setRoleManagementUsers([]);
+      return;
+    }
+
+    let cancelled = false;
+    listUsers({ token })
+      .then((users) => {
+        if (!cancelled) setRoleManagementUsers(users);
+      })
+      .catch(() => {
+        if (!cancelled) setRoleManagementUsers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [groupsPanelOpen, canManageAllGroups, token]);
+
+  useEffect(() => {
+    const query = memberSearchQuery.trim();
+    const group = groups.find((candidate) => candidate.id === selectedGroupId);
+    if (groupsPanelView !== 'group' || !groupsPanelOpen || !group?.canManage) {
+      setUserOptions([]);
+      setMemberSearchLoading(false);
+      return;
+    }
+    if (query.length < 2) {
+      setMemberSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setMemberSearchLoading(true);
+    listUsers({ query, token })
+      .then((users) => {
+        if (!cancelled) setUserOptions(users);
+      })
+      .catch(() => {
+        if (!cancelled) setUserOptions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMemberSearchLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [groupsPanelOpen, groups, groupsPanelView, memberSearchQuery, selectedGroupId, token]);
+
+  useEffect(() => {
+    const query = superAdminSearchQuery.trim();
+    if (!groupsPanelOpen || !canManageAllGroups) {
+      setSuperAdminUserOptions([]);
+      setSuperAdminSearchLoading(false);
+      return;
+    }
+    if (query.length < 2) {
+      setSuperAdminSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSuperAdminSearchLoading(true);
+    listUsers({ query, token })
+      .then((users) => {
+        if (!cancelled) setSuperAdminUserOptions(users);
+      })
+      .catch(() => {
+        if (!cancelled) setSuperAdminUserOptions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSuperAdminSearchLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [groupsPanelOpen, canManageAllGroups, superAdminSearchQuery, token]);
+
+  useEffect(() => {
     if (!pageVisible) {
       wasPageHiddenRef.current = true;
       return;
@@ -572,6 +741,10 @@ export function App() {
     }, delayMs);
   }
 
+  function userCanWriteSession(session: Session): boolean {
+    return canCallApi && (!sessionAuthRequired || canWriteSession(currentUser, session, groups));
+  }
+
   async function refreshSessions() {
     if (sessionsRefreshInFlightRef.current) {
       sessionsRefreshQueuedRef.current = true;
@@ -587,10 +760,10 @@ export function App() {
       setSessionsLoaded(true);
       setSelectedSessionId((current) => {
         if (current && nextSessions.some((session) => session.id === current)) return current;
-        if (localStorage.getItem(newSessionSelectedStorageKey) === 'true') return '';
+        if (sessionStorage.getItem(newSessionSelectedStorageKey) === 'true') return '';
         const next = nextSessions[0]?.id ?? '';
-        if (next) localStorage.setItem(selectedSessionStorageKey, next);
-        else localStorage.removeItem(selectedSessionStorageKey);
+        if (next) sessionStorage.setItem(selectedSessionStorageKey, next);
+        else sessionStorage.removeItem(selectedSessionStorageKey);
         return next;
       });
     } catch (err) {
@@ -603,6 +776,33 @@ export function App() {
         sessionsRefreshQueuedRef.current = false;
         scheduleSessionsRefresh(0);
       }
+    }
+  }
+
+  async function refreshGroups() {
+    try {
+      const nextGroups = await listGroups(token);
+      setGroups(nextGroups);
+      setNewThreadGroupId((current) => {
+        if (
+          current &&
+          nextGroups.some((group) => group.id === current && group.canCreateSessions && !group.archivedAt)
+        ) {
+          return current;
+        }
+        return nextGroups.find((group) => group.canCreateSessions && !group.archivedAt)?.id ?? '';
+      });
+      setSelectedGroupId((current) => {
+        const nextGroupId =
+          current && nextGroups.some((group) => group.id === current)
+            ? current
+            : (nextGroups.find((group) => group.canManage)?.id ?? nextGroups[0]?.id ?? '');
+        if (nextGroupId) sessionStorage.setItem(groupsPanelSelectedGroupStorageKey, nextGroupId);
+        else sessionStorage.removeItem(groupsPanelSelectedGroupStorageKey);
+        return nextGroupId;
+      });
+    } catch (err) {
+      handleApiError(err);
     }
   }
 
@@ -668,7 +868,7 @@ export function App() {
   async function handleCreateThread(event: FormEvent) {
     event.preventDefault();
     const firstPrompt = newThreadPrompt.trim();
-    if (createSessionInFlightRef.current || !canAdmin || !firstPrompt) return;
+    if (createSessionInFlightRef.current || !canCreateThread || !firstPrompt) return;
     createSessionInFlightRef.current = true;
     const firstRepository = newThreadRepository.trim();
     blurFocusedTextControl();
@@ -677,7 +877,11 @@ export function App() {
     setLoading(true);
     setError('');
     try {
-      const session = await createSession({ title: titleFromPrompt(firstPrompt), token });
+      const session = await createSession({
+        title: titleFromPrompt(firstPrompt),
+        token,
+        ownerGroupId: newThreadGroupId,
+      });
       const message = await enqueueMessage({
         sessionId: session.id,
         prompt: firstPrompt,
@@ -714,7 +918,13 @@ export function App() {
 
   async function handleSendMessage(input: { prompt: string }): Promise<boolean> {
     const messagePrompt = input.prompt.trim();
-    if (sendMessageInFlightRef.current || !canAdmin || !selectedSessionId || selectedSessionArchived || !messagePrompt)
+    if (
+      sendMessageInFlightRef.current ||
+      !canWriteSelectedSession ||
+      !selectedSessionId ||
+      selectedSessionArchived ||
+      !messagePrompt
+    )
       return false;
     sendMessageInFlightRef.current = true;
     setError('');
@@ -755,7 +965,7 @@ export function App() {
 
   async function handleUpdateTitle(title: string): Promise<boolean> {
     const nextTitle = title.trim();
-    if (!canAdmin || !selectedSessionId || !nextTitle) return false;
+    if (!canWriteSelectedSession || !selectedSessionId || !nextTitle) return false;
     setError('');
     try {
       const session = await updateSession({ sessionId: selectedSessionId, title: nextTitle, token });
@@ -768,7 +978,7 @@ export function App() {
   }
 
   async function handleArchiveSession() {
-    if (!canAdmin || !selectedSessionId) return;
+    if (!canWriteSelectedSession || !selectedSessionId) return;
     setError('');
     const rollback = archiveOptimistically(selectedSessionId);
     try {
@@ -781,7 +991,7 @@ export function App() {
   }
 
   async function startEditingMessage(message: Message) {
-    if (!canAdmin || !selectedSessionId || message.status !== 'pending') return;
+    if (!canWriteSelectedSession || !selectedSessionId || message.status !== 'pending') return;
     setError('');
     try {
       const session = await pauseQueue({ sessionId: selectedSessionId, token });
@@ -794,7 +1004,7 @@ export function App() {
   }
 
   async function finishEditingMessage(resume: boolean) {
-    if (!canAdmin || !selectedSessionId || !editingMessageId) return;
+    if (!canWriteSelectedSession || !selectedSessionId || !editingMessageId) return;
     setError('');
     try {
       if (resume) {
@@ -809,7 +1019,7 @@ export function App() {
   }
 
   async function saveMessageEdit() {
-    if (!canAdmin || !selectedSessionId || !editingMessageId || !messageDraft.trim()) return;
+    if (!canWriteSelectedSession || !selectedSessionId || !editingMessageId || !messageDraft.trim()) return;
     setError('');
     try {
       const message = await updateMessage({
@@ -826,7 +1036,7 @@ export function App() {
   }
 
   async function cancelQueuedMessage(messageId: string) {
-    if (!canAdmin || !selectedSessionId) return;
+    if (!canWriteSelectedSession || !selectedSessionId) return;
     setError('');
     try {
       const message = await cancelMessage({ sessionId: selectedSessionId, messageId, token });
@@ -837,7 +1047,7 @@ export function App() {
   }
 
   async function retryFailedMessages(messageIds: string[]) {
-    if (!canAdmin || !selectedSessionId || selectedSessionArchived || !messageIds.length) return;
+    if (!canWriteSelectedSession || !selectedSessionId || selectedSessionArchived || !messageIds.length) return;
     setLoading(true);
     setError('');
     try {
@@ -857,7 +1067,7 @@ export function App() {
   }
 
   async function cancelRun() {
-    if (!canAdmin || !selectedSessionId) return;
+    if (!canWriteSelectedSession || !selectedSessionId) return;
     setError('');
     try {
       const cancelledMessages = await cancelCurrentRun({ sessionId: selectedSessionId, token });
@@ -901,10 +1111,23 @@ export function App() {
     localStorage.removeItem(tokenStorageKey);
     setToken('');
     setDraftToken('');
-    localStorage.removeItem(selectedSessionStorageKey);
+    sessionStorage.removeItem(selectedSessionStorageKey);
     clearSessionSearchParam();
-    localStorage.removeItem(newSessionSelectedStorageKey);
+    sessionStorage.removeItem(newSessionSelectedStorageKey);
+    sessionStorage.removeItem(groupsPanelOpenStorageKey);
+    sessionStorage.removeItem(groupsPanelViewStorageKey);
+    sessionStorage.removeItem(groupsPanelSelectedGroupStorageKey);
+    sessionStorage.removeItem(setupGuideOpenStorageKey);
     setSessions([]);
+    setGroups([]);
+    setGroupMembers([]);
+    setUserOptions([]);
+    setMemberSearchQuery('');
+    setMemberUserId('');
+    setSuperAdminSearchQuery('');
+    setSuperAdminUserId('');
+    setSuperAdminUserOptions([]);
+    setRoleManagementUsers([]);
     setSessionsLoaded(false);
     setSelectedSessionId('');
     setIsCreatingThread(false);
@@ -916,18 +1139,23 @@ export function App() {
     setExternalResources([]);
     setCallbacks([]);
     setSetupGuideOpen(false);
+    sessionStorage.removeItem(setupGuideOpenStorageKey);
+    setGroupsPanelOpen(false);
     setSetupStatus(null);
     setSetupStatusError('');
   }
 
   function startNewThread() {
-    if (!canAdmin) return;
+    if (!canCreateThread) return;
     setSetupGuideOpen(false);
+    sessionStorage.removeItem(setupGuideOpenStorageKey);
+    setGroupsPanelOpen(false);
+    sessionStorage.removeItem(groupsPanelOpenStorageKey);
     setSidebarOpen(false);
     setSidebarCollapsed(false);
-    localStorage.removeItem(selectedSessionStorageKey);
+    sessionStorage.removeItem(selectedSessionStorageKey);
     clearSessionSearchParam();
-    localStorage.setItem(newSessionSelectedStorageKey, 'true');
+    sessionStorage.setItem(newSessionSelectedStorageKey, 'true');
     setSelectedSessionId('');
     setIsCreatingThread(true);
     setFollowUpRepository('');
@@ -945,11 +1173,14 @@ export function App() {
 
   function selectSession(sessionId: string) {
     setSetupGuideOpen(false);
+    sessionStorage.removeItem(setupGuideOpenStorageKey);
+    setGroupsPanelOpen(false);
+    sessionStorage.removeItem(groupsPanelOpenStorageKey);
     autoScrolledSessionId.current = '';
     selectedSessionIdRef.current = sessionId;
-    localStorage.setItem(selectedSessionStorageKey, sessionId);
+    sessionStorage.setItem(selectedSessionStorageKey, sessionId);
     setSessionSearchParam(sessionId);
-    localStorage.removeItem(newSessionSelectedStorageKey);
+    sessionStorage.removeItem(newSessionSelectedStorageKey);
     setSelectedSessionId(sessionId);
     setIsCreatingThread(false);
     setFollowUpRepository('');
@@ -960,7 +1191,222 @@ export function App() {
 
   function openSetupGuide() {
     setSetupGuideOpen(true);
+    sessionStorage.setItem(setupGuideOpenStorageKey, 'true');
+    setGroupsPanelOpen(false);
+    sessionStorage.removeItem(groupsPanelOpenStorageKey);
     setSidebarOpen(false);
+  }
+
+  function openGroupsPanel() {
+    if (!canViewGroups) return;
+    setSetupGuideOpen(false);
+    sessionStorage.removeItem(setupGuideOpenStorageKey);
+    setGroupsPanelOpen(true);
+    sessionStorage.setItem(groupsPanelOpenStorageKey, 'true');
+    setSidebarCollapsed(false);
+    setSidebarOpen(!isDesktopViewport());
+  }
+
+  function showSessionsSidebar() {
+    setSetupGuideOpen(false);
+    sessionStorage.removeItem(setupGuideOpenStorageKey);
+    setGroupsPanelOpen(false);
+    sessionStorage.removeItem(groupsPanelOpenStorageKey);
+    setSidebarCollapsed(false);
+    setSidebarOpen(true);
+  }
+
+  async function handleCreateGroup() {
+    if (!canManageAllGroups) return;
+    const name = nextAccessGroupName(groups);
+    setError('');
+    try {
+      const group = await createGroup({
+        name,
+        defaultVisibility: 'organization',
+        defaultWritePolicy: 'group_members',
+        token,
+      });
+      await refreshGroups();
+      setGroupsPanelView('group');
+      sessionStorage.setItem(groupsPanelViewStorageKey, 'group');
+      sessionStorage.setItem(groupsPanelSelectedGroupStorageKey, group.id);
+      setSelectedGroupId(group.id);
+    } catch (err) {
+      handleApiError(err);
+    }
+  }
+
+  function handleGroupFormNameChange(value: string) {
+    setGroupFormName(value);
+    setGroupFormServerError('');
+  }
+
+  async function handleSaveGroup() {
+    const group = groups.find((candidate) => candidate.id === selectedGroupId);
+    if (!group?.canManage || !groupFormName.trim()) return;
+    const validationError = groupNameValidationError(groups, group.id, groupFormName);
+    if (validationError) {
+      setGroupFormServerError(validationError);
+      return;
+    }
+    setError('');
+    setGroupFormServerError('');
+    try {
+      const updated = await updateGroup({
+        groupId: group.id,
+        name: groupFormName.trim(),
+        defaultVisibility: groupFormVisibility,
+        defaultWritePolicy: groupFormWritePolicy,
+        token,
+      });
+      setGroups((current) => current.map((candidate) => (candidate.id === updated.id ? updated : candidate)));
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setGroupFormServerError('An access group with this name already exists.');
+        return;
+      }
+      handleApiError(err);
+    }
+  }
+
+  async function handleArchiveGroup(groupId: string, archived: boolean) {
+    const group = groups.find((candidate) => candidate.id === groupId);
+    if (!group?.canManage) return;
+    setError('');
+    try {
+      const updated = await archiveGroup({ groupId, archived, token });
+      setGroups((current) => current.map((candidate) => (candidate.id === updated.id ? updated : candidate)));
+      if (newThreadGroupId === updated.id && updated.archivedAt) {
+        setNewThreadGroupId(
+          groups.find(
+            (candidate) => candidate.id !== updated.id && candidate.canCreateSessions && !candidate.archivedAt,
+          )?.id ?? '',
+        );
+      }
+    } catch (err) {
+      handleApiError(err);
+    }
+  }
+
+  async function handleAddGroupMember() {
+    const group = groups.find((candidate) => candidate.id === selectedGroupId);
+    const userId = memberUserId.trim();
+    if (!group?.canManage || !userId) return;
+    setError('');
+    try {
+      const member = await upsertGroupMember({ groupId: group.id, userId, role: memberRole, token });
+      setGroupMembers((current) => [member, ...current.filter((candidate) => candidate.userId !== member.userId)]);
+      setMemberUserId('');
+      setMemberSearchQuery('');
+      setUserOptions([]);
+      await refreshGroups();
+    } catch (err) {
+      handleApiError(err);
+    }
+  }
+
+  async function handleUpdateGroupMemberRole(userId: string, role: GroupRole) {
+    const group = groups.find((candidate) => candidate.id === selectedGroupId);
+    if (!group?.canManage) return;
+    setError('');
+    try {
+      const member = await upsertGroupMember({ groupId: group.id, userId, role, token });
+      setGroupMembers((current) => current.map((candidate) => (candidate.userId === userId ? member : candidate)));
+      await refreshGroups();
+    } catch (err) {
+      handleApiError(err);
+    }
+  }
+
+  async function handleRemoveGroupMember(userId: string) {
+    const group = groups.find((candidate) => candidate.id === selectedGroupId);
+    if (!group?.canManage) return;
+    setError('');
+    try {
+      await removeGroupMember({ groupId: group.id, userId, token });
+      setGroupMembers((current) => current.filter((candidate) => candidate.userId !== userId));
+      await refreshGroups();
+    } catch (err) {
+      handleApiError(err);
+    }
+  }
+
+  function selectMemberUser(userId: string) {
+    setMemberUserId(userId);
+    setMemberSearchQuery('');
+  }
+
+  async function handlePromoteSuperAdmin() {
+    const userId = superAdminUserId.trim();
+    if (!canManageAllGroups || !userId) return;
+    setError('');
+    try {
+      const promoted = await updateUserRole({ userId, role: 'super_admin', token });
+      if (currentUser?.id === promoted.id) setCurrentUser({ ...currentUser, role: promoted.role });
+      setRoleManagementUsers((current) => upsertAuthUser(current, promoted));
+      setSuperAdminUserOptions((current) =>
+        current.map((candidate) => (candidate.id === promoted.id ? { ...candidate, role: promoted.role } : candidate)),
+      );
+      setUserOptions((current) =>
+        current.map((candidate) => (candidate.id === promoted.id ? { ...candidate, role: promoted.role } : candidate)),
+      );
+      setSuperAdminUserId('');
+      setSuperAdminSearchQuery('');
+      setSuperAdminUserOptions([]);
+    } catch (err) {
+      handleApiError(err);
+    }
+  }
+
+  function selectSuperAdminUser(userId: string) {
+    setSuperAdminUserId(userId);
+    setSuperAdminSearchQuery('');
+  }
+
+  async function handleRemoveSuperAdmin(userId: string) {
+    if (!canManageAllGroups || userId === currentUser?.id) return;
+    setError('');
+    try {
+      const updated = await updateUserRole({ userId, role: 'user', token });
+      setRoleManagementUsers((current) => upsertAuthUser(current, updated));
+      setSuperAdminUserOptions((current) =>
+        current.map((candidate) => (candidate.id === updated.id ? { ...candidate, role: updated.role } : candidate)),
+      );
+      setUserOptions((current) =>
+        current.map((candidate) => (candidate.id === updated.id ? { ...candidate, role: updated.role } : candidate)),
+      );
+    } catch (err) {
+      handleApiError(err);
+    }
+  }
+
+  function selectGroupPanel(groupId: string) {
+    setGroupsPanelView('group');
+    sessionStorage.setItem(groupsPanelViewStorageKey, 'group');
+    sessionStorage.setItem(groupsPanelSelectedGroupStorageKey, groupId);
+    setSelectedGroupId(groupId);
+    if (!isDesktopViewport()) setSidebarOpen(false);
+  }
+
+  function selectSuperAdminsPanel() {
+    if (!canManageAllGroups) return;
+    setGroupsPanelView('super_admins');
+    sessionStorage.setItem(groupsPanelViewStorageKey, 'super_admins');
+    if (!isDesktopViewport()) setSidebarOpen(false);
+  }
+
+  async function handleUpdateSessionAccess(input: { ownerGroupId: string }): Promise<boolean> {
+    if (!selectedSession || !canManageSelectedSessionAccess) return false;
+    setError('');
+    try {
+      const session = await updateSessionAccess({ sessionId: selectedSession.id, token, ...input });
+      setSessions((current) => current.map((candidate) => (candidate.id === session.id ? session : candidate)));
+      return true;
+    } catch (err) {
+      handleApiError(err);
+      return false;
+    }
   }
 
   async function refreshSetupStatus() {
@@ -1060,9 +1506,9 @@ export function App() {
       current.map((candidate) => (candidate.id === rollback.session.id ? rollback.session : candidate)),
     );
     if (rollback.selectedSessionId === rollback.session.id) {
-      localStorage.setItem(selectedSessionStorageKey, rollback.selectedSessionId);
+      sessionStorage.setItem(selectedSessionStorageKey, rollback.selectedSessionId);
       setSessionSearchParam(rollback.selectedSessionId);
-      localStorage.removeItem(newSessionSelectedStorageKey);
+      sessionStorage.removeItem(newSessionSelectedStorageKey);
       setSelectedSessionId(rollback.selectedSessionId);
       setIsCreatingThread(rollback.isCreatingThread);
       setMessages(rollback.messages);
@@ -1099,9 +1545,9 @@ export function App() {
   function applyArchivedSession(session: Session) {
     setSessions((current) => current.map((candidate) => (candidate.id === session.id ? session : candidate)));
     if (selectedSessionId === session.id) {
-      localStorage.removeItem(selectedSessionStorageKey);
+      sessionStorage.removeItem(selectedSessionStorageKey);
       clearSessionSearchParam();
-      localStorage.setItem(newSessionSelectedStorageKey, 'true');
+      sessionStorage.setItem(newSessionSelectedStorageKey, 'true');
       setSelectedSessionId('');
       setIsCreatingThread(true);
       setMessages([]);
@@ -1116,7 +1562,8 @@ export function App() {
   }
 
   async function archiveFromList(sessionId: string) {
-    if (!canAdmin) return;
+    const sessionToArchive = sessions.find((candidate) => candidate.id === sessionId);
+    if (!sessionToArchive || !userCanWriteSession(sessionToArchive)) return;
     setError('');
     const rollback = archiveOptimistically(sessionId);
     try {
@@ -1129,7 +1576,8 @@ export function App() {
   }
 
   async function unarchiveFromList(sessionId: string) {
-    if (!canAdmin) return;
+    const sessionToUnarchive = sessions.find((candidate) => candidate.id === sessionId);
+    if (!sessionToUnarchive || !userCanWriteSession(sessionToUnarchive)) return;
     setError('');
     const rollback = unarchiveOptimistically(sessionId);
     try {
@@ -1142,8 +1590,7 @@ export function App() {
   }
 
   async function restoreSelectedSession() {
-    if (!canAdmin) return;
-    if (!canAdmin || !selectedSessionId) return;
+    if (!canWriteSelectedSession || !selectedSessionId) return;
     setError('');
     const rollback = unarchiveOptimistically(selectedSessionId);
     try {
@@ -1156,8 +1603,7 @@ export function App() {
   }
 
   async function handleReplayCallback(callbackId: string) {
-    if (!canAdmin) return;
-    if (!canAdmin || !selectedSessionId) return;
+    if (!canWriteSelectedSession || !selectedSessionId) return;
     setError('');
     try {
       const callback = await replayCallback({ sessionId: selectedSessionId, callbackId, token });
@@ -1169,8 +1615,7 @@ export function App() {
   }
 
   async function handleExtendSandbox(port?: number) {
-    if (!canAdmin) return;
-    if (!canAdmin || !selectedSessionId) return;
+    if (!canWriteSelectedSession || !selectedSessionId) return;
     setError('');
     try {
       await extendSandbox({ sessionId: selectedSessionId, token, seconds: 600, ...(port ? { port } : {}) });
@@ -1181,8 +1626,7 @@ export function App() {
   }
 
   async function handleOpenWorkspaceTool(toolId: WorkspaceToolId) {
-    if (!canAdmin) return;
-    if (!canAdmin || !selectedSessionId) return;
+    if (!canWriteSelectedSession || !selectedSessionId) return;
     setError('');
     const opened = window.open('about:blank', '_blank');
     writeWorkspaceToolTabMessage(
@@ -1222,7 +1666,6 @@ export function App() {
         </div>
       ) : null}
       {!startupLoading && connectionStatus.state !== 'ok' ? <ConnectionStatusBanner status={connectionStatus} /> : null}
-      {!startupLoading && currentUser?.role === 'viewer' ? <ReadOnlyModeBanner /> : null}
 
       {startupLoading ? (
         <StartupLoadingPanel connectionStatus={connectionStatus} />
@@ -1252,8 +1695,8 @@ export function App() {
                   variant="ghost"
                   size="icon"
                   onClick={expandSidebar}
-                  aria-label="Expand sessions"
-                  title="Expand sessions"
+                  aria-label={groupsPanelOpen ? 'Expand access groups' : 'Expand sessions'}
+                  title={groupsPanelOpen ? 'Expand access groups' : 'Expand sessions'}
                 >
                   <PanelLeftOpen className="h-4 w-4" />
                 </Button>
@@ -1265,30 +1708,62 @@ export function App() {
                   sidebarOpen && 'block',
                 )}
               >
-                <ThreadSidebar
-                  archivedSessionsOpen={archivedSessionsOpen || Boolean(selectedSessionArchived)}
-                  authRequired={bearerAuthRequired || sessionAuthRequired}
-                  canCallApi={canCallApi}
-                  canAdmin={canAdmin}
-                  canViewSetup={canViewSetup}
-                  health={health}
-                  connectionStatus={connectionStatus}
-                  loading={loading}
-                  sessions={sortedSessions}
-                  selectedSessionId={selectedSessionId}
-                  token={token}
-                  onArchive={archiveFromList}
-                  onArchivedSessionsOpenChange={setArchivedSessionsOpen}
-                  onCollapse={collapseSidebar}
-                  onNewThread={startNewThread}
-                  onOpenSetup={openSetupGuide}
-                  onRefresh={refreshSessions}
-                  onSelect={selectSession}
-                  onSignOut={signOut}
-                  onThemeChange={setThemePreference}
-                  themePreference={themePreference}
-                  onUnarchive={unarchiveFromList}
-                />
+                {groupsPanelOpen ? (
+                  <GroupsSidebar
+                    authRequired={bearerAuthRequired || sessionAuthRequired}
+                    canCreateGroups={canManageAllGroups}
+                    canViewGroups={canViewGroups}
+                    canViewSetup={canViewSetup}
+                    connectionStatus={connectionStatus}
+                    currentUser={currentUser}
+                    groups={groups}
+                    health={health}
+                    selectedGroupId={selectedGroupId}
+                    selectedView={groupsPanelView}
+                    superAdminUsers={currentSuperAdminUsers}
+                    themePreference={themePreference}
+                    token={token}
+                    onBackToSessions={showSessionsSidebar}
+                    onCollapse={collapseSidebar}
+                    onCreateGroup={handleCreateGroup}
+                    onOpenGroups={openGroupsPanel}
+                    onOpenSetup={openSetupGuide}
+                    onSelectGroup={selectGroupPanel}
+                    onSelectSuperAdmins={selectSuperAdminsPanel}
+                    onSignOut={signOut}
+                    onThemeChange={setThemePreference}
+                  />
+                ) : (
+                  <ThreadSidebar
+                    archivedSessionsOpen={archivedSessionsOpen || Boolean(selectedSessionArchived)}
+                    authRequired={bearerAuthRequired || sessionAuthRequired}
+                    canCallApi={canCallApi}
+                    canViewGroups={canViewGroups}
+                    canStartNewThread={canCreateThread}
+                    canViewSetup={canViewSetup}
+                    canWriteSession={userCanWriteSession}
+                    health={health}
+                    connectionStatus={connectionStatus}
+                    loading={loading}
+                    navPage={showingSetupGuide ? 'setup' : 'sessions'}
+                    sessions={sortedSessions}
+                    selectedSessionId={selectedSessionId}
+                    token={token}
+                    onArchive={archiveFromList}
+                    onArchivedSessionsOpenChange={setArchivedSessionsOpen}
+                    onCollapse={collapseSidebar}
+                    onNewThread={startNewThread}
+                    onOpenGroups={openGroupsPanel}
+                    onOpenSessions={showSessionsSidebar}
+                    onOpenSetup={openSetupGuide}
+                    onRefresh={refreshSessions}
+                    onSelect={selectSession}
+                    onSignOut={signOut}
+                    onThemeChange={setThemePreference}
+                    themePreference={themePreference}
+                    onUnarchive={unarchiveFromList}
+                  />
+                )}
               </aside>
             )}
 
@@ -1296,19 +1771,66 @@ export function App() {
               <AppNoticesBanner notices={health?.notices ?? []} />
               {health?.sandboxProvider === 'unsafe-local' ? <LocalSandboxWarning /> : null}
               <div className="min-h-0 flex-1 overflow-hidden">
-                {showingSetupGuide ? (
+                {groupsPanelOpen ? (
+                  <GroupsPanel
+                    canCreateGroups={canManageAllGroups}
+                    currentUser={currentUser}
+                    groupMembers={groupMembers}
+                    groups={groups}
+                    groupFormError={groupFormError}
+                    groupFormName={groupFormName}
+                    groupFormVisibility={groupFormVisibility}
+                    groupFormWritePolicy={groupFormWritePolicy}
+                    memberRole={memberRole}
+                    memberSearchLoading={memberSearchLoading}
+                    memberSearchQuery={memberSearchQuery}
+                    memberUserId={memberUserId}
+                    selectedView={groupsPanelView}
+                    selectedGroupId={selectedGroupId}
+                    superAdminSearchLoading={superAdminSearchLoading}
+                    superAdminSearchQuery={superAdminSearchQuery}
+                    superAdminUserId={superAdminUserId}
+                    superAdminUserOptions={superAdminUserOptions}
+                    superAdminUsers={currentSuperAdminUsers}
+                    users={userOptions}
+                    showOpenSidebar={!sidebarOpen}
+                    onAddMember={handleAddGroupMember}
+                    onArchiveGroup={handleArchiveGroup}
+                    onCreateGroup={handleCreateGroup}
+                    onGroupFormNameChange={handleGroupFormNameChange}
+                    onGroupFormVisibilityChange={setGroupFormVisibility}
+                    onGroupFormWritePolicyChange={setGroupFormWritePolicy}
+                    onMemberRoleChange={setMemberRole}
+                    onMemberSearchQueryChange={setMemberSearchQuery}
+                    onMemberUserIdChange={setMemberUserId}
+                    onOpenSidebar={expandSidebar}
+                    onSelectMemberUser={selectMemberUser}
+                    onPromoteSuperAdmin={handlePromoteSuperAdmin}
+                    onRemoveMember={handleRemoveGroupMember}
+                    onRemoveSuperAdmin={handleRemoveSuperAdmin}
+                    onSaveGroup={handleSaveGroup}
+                    onSelectGroup={selectGroupPanel}
+                    onSelectSuperAdminUser={selectSuperAdminUser}
+                    onSelectSuperAdmins={selectSuperAdminsPanel}
+                    onSuperAdminSearchQueryChange={setSuperAdminSearchQuery}
+                    onSuperAdminUserIdChange={setSuperAdminUserId}
+                    onUpdateMemberRole={handleUpdateGroupMemberRole}
+                  />
+                ) : showingSetupGuide ? (
                   <SetupGuidePanel
                     loading={setupStatusLoading}
                     setupStatus={setupStatus}
                     setupError={setupStatusError}
                     onRefresh={refreshSetupStatus}
                     onStartNewThread={startNewThread}
-                    canStartNewThread={canAdmin}
+                    canStartNewThread={canCreateThread}
                   />
                 ) : isCreatingThread || !selectedSession ? (
                   <NewThreadPanel
-                    canCallApi={canAdmin}
-                    readOnly={!canAdmin}
+                    canCallApi={canCreateThread}
+                    readOnly={!canCreateThread}
+                    groupId={newThreadGroupId}
+                    groups={creatableGroups}
                     loading={loading}
                     prompt={newThreadPrompt}
                     repository={newThreadRepository}
@@ -1324,6 +1846,7 @@ export function App() {
                     modelUnavailableReason={newThreadModelUnavailableReason}
                     showOpenSidebar={!sidebarOpen}
                     onOpenSidebar={expandSidebar}
+                    onGroupChange={setNewThreadGroupId}
                     onPromptChange={setNewThreadPrompt}
                     onRepositoryChange={setNewThreadRepository}
                     onBranchChange={setNewThreadBranch}
@@ -1334,7 +1857,7 @@ export function App() {
                   <section className="flex h-full min-h-0 flex-col">
                     <ThreadHeader
                       selectedSession={selectedSession}
-                      canAdmin={canAdmin}
+                      canWriteSession={canWriteSelectedSession}
                       showOpenSidebar={!sidebarOpen}
                       onArchive={handleArchiveSession}
                       onOpenSidebar={expandSidebar}
@@ -1356,13 +1879,21 @@ export function App() {
                             ) : (
                               <>
                                 <MobileContextPanel
+                                  accessPanel={
+                                    <SessionAccessPanel
+                                      canManageAccess={canManageSelectedSessionAccess}
+                                      groups={groups}
+                                      session={selectedSession}
+                                      onUpdateAccess={handleUpdateSessionAccess}
+                                    />
+                                  }
                                   repository={selectedRepository}
                                   branch={selectedSessionBranch || null}
                                   artifacts={artifacts}
                                   services={services}
                                   externalResources={externalResources}
                                   callbacks={callbacks}
-                                  canAdmin={canAdmin}
+                                  canWriteSession={canWriteSelectedSession}
                                   onExtendSandbox={handleExtendSandbox}
                                   onReplayCallback={handleReplayCallback}
                                 />
@@ -1374,8 +1905,8 @@ export function App() {
                                   events={events}
                                   messageDraft={messageDraft}
                                   messages={messages}
-                                  canRetryMessages={canAdmin && !selectedSessionArchived}
-                                  canAdmin={canAdmin}
+                                  canRetryMessages={canWriteSelectedSession && !selectedSessionArchived}
+                                  canWriteSession={canWriteSelectedSession}
                                   onCancelEdit={() => finishEditingMessage(true)}
                                   onCancelQueuedMessage={cancelQueuedMessage}
                                   onCancelRun={cancelRun}
@@ -1412,7 +1943,7 @@ export function App() {
                           <MessageComposer
                             key={selectedSession.id}
                             archived={selectedSessionArchived}
-                            readOnly={!canAdmin}
+                            readOnly={!canWriteSelectedSession}
                             hasSelectedRepository={Boolean(selectedRepository)}
                             repository={followUpRepository}
                             inheritedRepository={selectedRepository || ''}
@@ -1438,13 +1969,21 @@ export function App() {
                       </section>
                       {selectedSessionDetailLoading ? null : (
                         <DesktopContextPanel
+                          accessPanel={
+                            <SessionAccessPanel
+                              canManageAccess={canManageSelectedSessionAccess}
+                              groups={groups}
+                              session={selectedSession}
+                              onUpdateAccess={handleUpdateSessionAccess}
+                            />
+                          }
                           repository={selectedRepository}
                           branch={selectedSessionBranch || null}
                           artifacts={artifacts}
                           services={services}
                           externalResources={externalResources}
                           callbacks={callbacks}
-                          canAdmin={canAdmin}
+                          canWriteSession={canWriteSelectedSession}
                           onExtendSandbox={handleExtendSandbox}
                           onReplayCallback={handleReplayCallback}
                         />
@@ -1458,18 +1997,6 @@ export function App() {
         </>
       )}
     </main>
-  );
-}
-
-function ReadOnlyModeBanner() {
-  return (
-    <div
-      className="border-b border-warning/30 bg-warning/10 px-4 py-2 text-sm text-warning-foreground dark:text-warning"
-      role="status"
-    >
-      <strong>Read-only mode:</strong> You can inspect sessions, messages, artifacts, and service metadata. Only admins
-      can start work, modify sessions, or open sandbox services.
-    </div>
   );
 }
 
@@ -1694,6 +2221,48 @@ function titleFromPrompt(prompt: string): string {
 
 function sortSessionsByLastActivity(sessions: Session[]): Session[] {
   return [...sessions].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+}
+
+function canWriteSession(user: AuthUser | null, session: Session, groups: Group[]): boolean {
+  if (!user) return false;
+  if (user.role === 'super_admin') return true;
+  if (session.createdByUserId === user.id && session.writePolicy === 'creator_only') return true;
+  const role = groups.find((group) => group.id === session.ownerGroupId)?.membershipRole;
+  if (role === 'admin') return true;
+  return role === 'member' && session.writePolicy === 'group_members';
+}
+
+function groupCanManage(groups: Group[], groupId: string): boolean {
+  return groups.some((group) => group.id === groupId && group.canManage);
+}
+
+function nextAccessGroupName(groups: Group[]): string {
+  const baseName = 'New access group';
+  const names = new Set(groups.map((group) => normalizeGroupName(group.name)));
+  if (!names.has(normalizeGroupName(baseName))) return baseName;
+
+  for (let index = 2; ; index += 1) {
+    const name = `${baseName} ${index}`;
+    if (!names.has(normalizeGroupName(name))) return name;
+  }
+}
+
+function groupNameValidationError(groups: Group[], groupId: string, name: string): string {
+  const normalized = normalizeGroupName(name);
+  if (!normalized) return '';
+  const duplicate = groups.some((group) => group.id !== groupId && normalizeGroupName(group.name) === normalized);
+  return duplicate ? 'An access group with this name already exists.' : '';
+}
+
+function normalizeGroupName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function upsertAuthUser(users: AuthUser[], user: AuthUser): AuthUser[] {
+  const next = users.some((candidate) => candidate.id === user.id)
+    ? users.map((candidate) => (candidate.id === user.id ? user : candidate))
+    : [...users, user];
+  return next.sort((a, b) => a.username.localeCompare(b.username));
 }
 
 function blurFocusedTextControl(): void {

@@ -36,10 +36,10 @@ describe('loadConfig', () => {
       serviceTrustForwardedHosts: false,
       githubOAuthBaseUrl: 'https://github.com',
       authGithubAdminUsers: [],
-      authGithubAdminOrganizations: [],
-      authGithubViewerUsers: [],
-      authGithubViewerOrganizations: [],
-      unsafeAuthGithubAllowAllViewers: false,
+      authGithubAllowedUsers: [],
+      authGithubAllowedOrganizations: [],
+      authGithubDefaultGroupRole: 'member',
+      unsafeAuthGithubAllowAll: false,
       runnerStateStore: 'postgres',
       runnerModelChoices: [],
       slackApiBaseUrl: 'https://slack.com/api',
@@ -116,10 +116,10 @@ describe('loadConfig', () => {
         AUTH_COOKIE_SAME_SITE: 'none',
         WEB_BASE_URL: 'https://deputies.example/app',
         AUTH_GITHUB_ADMIN_USERS: 'admin1, admin2',
-        AUTH_GITHUB_ADMIN_ORGANIZATIONS: 'admins',
-        AUTH_GITHUB_VIEWER_USERS: 'viewer1, viewer2',
-        AUTH_GITHUB_VIEWER_ORGANIZATIONS: 'viewers',
-        UNSAFE_AUTH_GITHUB_ALLOW_ALL_VIEWERS: 'true',
+        AUTH_GITHUB_ALLOWED_USERS: 'user1, user2',
+        AUTH_GITHUB_ALLOWED_ORGANIZATIONS: 'users',
+        AUTH_GITHUB_DEFAULT_GROUP_ROLE: 'member',
+        UNSAFE_AUTH_GITHUB_ALLOW_ALL: 'true',
         DATABASE_URL: 'postgres://example',
         RUNNER_MODEL_DEFAULT: 'anthropic/claude-haiku-4-5',
         OPENAI_CODEX_AUTH_FILE: '/tmp/pi-auth.json',
@@ -203,10 +203,10 @@ describe('loadConfig', () => {
       authCookieSameSite: 'none',
       webBaseUrl: 'https://deputies.example/app',
       authGithubAdminUsers: ['admin1', 'admin2'],
-      authGithubAdminOrganizations: ['admins'],
-      authGithubViewerUsers: ['viewer1', 'viewer2'],
-      authGithubViewerOrganizations: ['viewers'],
-      unsafeAuthGithubAllowAllViewers: true,
+      authGithubAllowedUsers: ['user1', 'user2'],
+      authGithubAllowedOrganizations: ['users'],
+      authGithubDefaultGroupRole: 'member',
+      unsafeAuthGithubAllowAll: true,
       databaseUrl: 'postgres://example',
       runnerModelDefault: 'anthropic/claude-haiku-4-5',
       openaiCodexAuthFile: '/tmp/pi-auth.json',
@@ -501,6 +501,9 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ API_AUTH_MODE: 'none', AUTH_COOKIE_SAME_SITE: 'strict' })).toThrow(
       'Expected one of lax, none',
     );
+    expect(() => loadConfig({ API_AUTH_MODE: 'none', AUTH_GITHUB_DEFAULT_GROUP_ROLE: 'owner' })).toThrow(
+      'Expected one of viewer, member, admin',
+    );
   });
 
   it('rejects invalid boolean values', () => {
@@ -513,8 +516,8 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ API_AUTH_MODE: 'none', UNSAFE_GITHUB_WEBHOOK_ALLOW_ALL_USERS_AND_ORGS: 'yes' })).toThrow(
       'UNSAFE_GITHUB_WEBHOOK_ALLOW_ALL_USERS_AND_ORGS must be true or false',
     );
-    expect(() => loadConfig({ API_AUTH_MODE: 'none', UNSAFE_AUTH_GITHUB_ALLOW_ALL_VIEWERS: 'yes' })).toThrow(
-      'UNSAFE_AUTH_GITHUB_ALLOW_ALL_VIEWERS must be true or false',
+    expect(() => loadConfig({ API_AUTH_MODE: 'none', UNSAFE_AUTH_GITHUB_ALLOW_ALL: 'yes' })).toThrow(
+      'UNSAFE_AUTH_GITHUB_ALLOW_ALL must be true or false',
     );
     expect(() => loadConfig({ API_AUTH_MODE: 'none', UNSAFE_ALLOW_LOCAL_HTTP_CALLBACKS: 'yes' })).toThrow(
       'UNSAFE_ALLOW_LOCAL_HTTP_CALLBACKS must be true or false',

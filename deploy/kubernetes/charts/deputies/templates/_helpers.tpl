@@ -89,6 +89,16 @@ app.kubernetes.io/instance: {{ .Release.Name }}
   value: {{ $root.Values.config.authCookieSecure | quote }}
 - name: AUTH_COOKIE_SAME_SITE
   value: {{ $root.Values.config.authCookieSameSite | quote }}
+- name: AUTH_GITHUB_ADMIN_USERS
+  value: {{ $root.Values.config.authGithubAdminUsers | quote }}
+- name: AUTH_GITHUB_ALLOWED_USERS
+  value: {{ $root.Values.config.authGithubAllowedUsers | quote }}
+- name: AUTH_GITHUB_ALLOWED_ORGANIZATIONS
+  value: {{ $root.Values.config.authGithubAllowedOrganizations | quote }}
+- name: AUTH_GITHUB_DEFAULT_GROUP_ROLE
+  value: {{ $root.Values.config.authGithubDefaultGroupRole | quote }}
+- name: UNSAFE_AUTH_GITHUB_ALLOW_ALL
+  value: {{ $root.Values.config.unsafeAuthGithubAllowAll | quote }}
 - name: WEB_BASE_URL
   value: {{ $root.Values.config.webBaseUrl | quote }}
 - name: SERVICE_BASE_DOMAIN

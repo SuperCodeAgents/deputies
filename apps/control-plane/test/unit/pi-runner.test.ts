@@ -18,6 +18,7 @@ import {
 import type { SandboxKeepaliveService } from '../../src/sandbox/service.js';
 import type { FileStat, SandboxFileSystem, SandboxHandle } from '../../src/sandbox/types.js';
 import { MemoryStore } from '../../src/store/memory.js';
+import { defaultGroupId } from '../../src/store/types.js';
 
 const piMock = vi.hoisted(() => ({
   createAgentSession: vi.fn(),
@@ -492,6 +493,9 @@ describe('PiRunner', () => {
         id: 'session-1',
         status: 'active',
         title: 'Pi artifact session',
+        ownerGroupId: defaultGroupId,
+        visibility: 'organization',
+        writePolicy: 'group_members',
         createdAt: new Date(),
         updatedAt: new Date(),
         context: {},
@@ -773,6 +777,9 @@ describe('PiRunner', () => {
         id: 'session-1',
         status: 'active',
         title: 'Pi artifact session',
+        ownerGroupId: defaultGroupId,
+        visibility: 'organization',
+        writePolicy: 'group_members',
         createdAt: new Date(),
         updatedAt: new Date(),
         context: {},
