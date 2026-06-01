@@ -151,6 +151,34 @@ import {
 import { cn } from './lib/utils.js';
 import { ChatPanel, DesktopContextPanel, MobileContextPanel } from './components/thread/thread-content.js';
 
+type AsyncState<T> = {
+  data: T;
+  loading: boolean;
+  error: string;
+};
+
+type SessionDetailState = {
+  messages: Message[];
+  events: AgentEvent[];
+  activeProgress: ActiveProgressByMessageId;
+  artifacts: Artifact[];
+  services: SandboxService[];
+  externalResources: ExternalResource[];
+  callbacks: CallbackDelivery[];
+};
+
+function emptySessionDetail(): SessionDetailState {
+  return {
+    messages: [],
+    events: [],
+    activeProgress: {},
+    artifacts: [],
+    services: [],
+    externalResources: [],
+    callbacks: [],
+  };
+}
+
 export function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -164,15 +192,17 @@ export function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarPanel, setSidebarPanel] = useState<'sessions' | 'groups'>(loadInitialSidebarPanel);
   const [isCreatingThread, setIsCreatingThread] = useState(loadInitialIsCreatingThread);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [events, setEvents] = useState<AgentEvent[]>([]);
-  const [activeProgress, setActiveProgress] = useState<ActiveProgressByMessageId>({});
-  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
-  const [services, setServices] = useState<SandboxService[]>([]);
-  const [externalResources, setExternalResources] = useState<ExternalResource[]>([]);
-  const [callbacks, setCallbacks] = useState<CallbackDelivery[]>([]);
-  const [repositoryOptions, setRepositoryOptions] = useState<RepositoryOption[]>([]);
-  const [branchOptions, setBranchOptions] = useState<BranchOption[]>([]);
+  const [sessionDetail, setSessionDetail] = useState<SessionDetailState>(emptySessionDetail);
+  const [repositoryOptionsState, setRepositoryOptionsState] = useState<AsyncState<RepositoryOption[]>>({
+    data: [],
+    loading: false,
+    error: '',
+  });
+  const [branchOptionsState, setBranchOptionsState] = useState<AsyncState<BranchOption[]>>({
+    data: [],
+    loading: false,
+    error: '',
+  });
   const [modelChoices, setModelChoices] = useState<ModelChoice[]>([]);
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [setupStatusLoading, setSetupStatusLoading] = useState(false);
@@ -195,10 +225,6 @@ export function App() {
   const [superAdminUserId, setSuperAdminUserId] = useState('');
   const [superAdminUserOptions, setSuperAdminUserOptions] = useState<AuthUser[]>([]);
   const [roleManagementUsers, setRoleManagementUsers] = useState<AuthUser[]>([]);
-  const [repositoryOptionsLoading, setRepositoryOptionsLoading] = useState(false);
-  const [repositoryOptionsError, setRepositoryOptionsError] = useState('');
-  const [branchOptionsLoading, setBranchOptionsLoading] = useState(false);
-  const [branchOptionsError, setBranchOptionsError] = useState('');
   const [newThreadModel, setNewThreadModel] = useState('');
   const [newThreadBranch, setNewThreadBranch] = useState('');
   const [newThreadPrompt, setNewThreadPrompt] = useState('');
@@ -226,6 +252,7 @@ export function App() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(initialConnectionStatus);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [composerFocused, setComposerFocused] = useState(false);
+  const { messages, events, activeProgress, artifacts, services, externalResources, callbacks } = sessionDetail;
   const eventCursor = useRef(0);
   const globalEventCursor = useRef(0);
   const lastBackgroundedAt = useRef<number | null>(null);
@@ -248,6 +275,13 @@ export function App() {
   const detailRefreshQueuedSessionIdRef = useRef<string | null>(null);
   const branchOptionsRepositoryRef = useRef('');
   const defaultSetupGuideOpenedRef = useRef(false);
+
+  const repositoryOptions = repositoryOptionsState.data;
+  const repositoryOptionsLoading = repositoryOptionsState.loading;
+  const repositoryOptionsError = repositoryOptionsState.error;
+  const branchOptions = branchOptionsState.data;
+  const branchOptionsLoading = branchOptionsState.loading;
+  const branchOptionsError = branchOptionsState.error;
 
   const bearerAuthRequired = health?.apiAuthMode === 'bearer';
   const sessionAuthRequired = health?.apiAuthMode === 'session';
@@ -326,15 +360,17 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!canCallApi) return;
+    if (!canCallApi) {
+      setRepositoryOptionsState((current) => ({ ...current, loading: false }));
+      return;
+    }
     let cancelled = false;
 
-    setRepositoryOptionsLoading(true);
-    setRepositoryOptionsError('');
+    setRepositoryOptionsState((current) => ({ ...current, loading: true, error: '' }));
     Promise.all([listRepositoryOptions(token), getModelChoices(token)])
       .then(([repositories, models]) => {
         if (cancelled) return;
-        setRepositoryOptions(repositories);
+        setRepositoryOptionsState({ data: repositories, loading: false, error: '' });
         const choices = normalizeModelChoices(models);
         const availableModels = choices.filter((model) => model.available).map((model) => model.value);
         setModelChoices(choices);
@@ -346,10 +382,9 @@ export function App() {
         });
       })
       .catch((err: unknown) => {
-        if (!cancelled) setRepositoryOptionsError(errorMessage(err));
-      })
-      .finally(() => {
-        if (!cancelled) setRepositoryOptionsLoading(false);
+        if (!cancelled) {
+          setRepositoryOptionsState((current) => ({ ...current, loading: false, error: errorMessage(err) }));
+        }
       });
 
     return () => {
@@ -373,22 +408,20 @@ export function App() {
       isCreatingThread || !selectedSessionId ? newThreadRepository : followUpRepository || selectedRepository || '';
     if (branchOptionsRepositoryRef.current !== repository) {
       branchOptionsRepositoryRef.current = repository;
-      setBranchOptions([]);
-      setBranchOptionsError('');
+      setBranchOptionsState((current) => ({ ...current, data: [], error: '' }));
       if (isCreatingThread || !selectedSessionId) setNewThreadBranch('');
       else if (followUpRepository) setFollowUpBranch('');
     }
     if (!canCallApi || !repository) {
-      setBranchOptionsLoading(false);
+      setBranchOptionsState((current) => ({ ...current, loading: false }));
       return;
     }
     let cancelled = false;
-    setBranchOptionsLoading(true);
-    setBranchOptionsError('');
+    setBranchOptionsState((current) => ({ ...current, loading: true, error: '' }));
     listBranches({ repository, token })
       .then((branches) => {
         if (cancelled) return;
-        setBranchOptions(branches);
+        setBranchOptionsState({ data: branches, loading: false, error: '' });
         const setBranch = isCreatingThread || !selectedSessionId ? setNewThreadBranch : setFollowUpBranch;
         setBranch((current) => {
           if (current && branches.some((branch) => branch.name === current)) return current;
@@ -400,11 +433,7 @@ export function App() {
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setBranchOptions([]);
-        setBranchOptionsError(errorMessage(err));
-      })
-      .finally(() => {
-        if (!cancelled) setBranchOptionsLoading(false);
+        setBranchOptionsState({ data: [], loading: false, error: errorMessage(err) });
       });
     return () => {
       cancelled = true;
@@ -713,12 +742,19 @@ export function App() {
               ) {
                 eventCursor.current = Math.max(eventCursor.current, event.sequence);
                 if (shouldUseActiveProgressEvent(event, messagesRef.current)) {
-                  setActiveProgress((current) => appendActiveProgress(current, event));
+                  setSessionDetail((current) => ({
+                    ...current,
+                    activeProgress: appendActiveProgress(current.activeProgress, event),
+                  }));
                 } else {
-                  if (event.type === 'agent_response_final' && event.messageId) {
-                    setActiveProgress((current) => omitActiveProgress(current, event.messageId!));
-                  }
-                  setEvents((current) => upsertEvent(current, event));
+                  setSessionDetail((current) => ({
+                    ...current,
+                    activeProgress:
+                      event.type === 'agent_response_final' && event.messageId
+                        ? omitActiveProgress(current.activeProgress, event.messageId)
+                        : current.activeProgress,
+                    events: upsertEvent(current.events, event),
+                  }));
                 }
                 if (
                   (event.type === 'sandbox_ready' &&
@@ -726,7 +762,7 @@ export function App() {
                   event.type === 'sandbox_stopped' ||
                   event.type === 'sandbox_destroyed'
                 ) {
-                  setServices([]);
+                  setSessionDetail((current) => ({ ...current, services: [] }));
                 }
                 if (shouldRefreshSessionDetail(event.type)) {
                   refreshSessionOutputs(activeSessionId).catch(() => undefined);
@@ -849,13 +885,15 @@ export function App() {
         ]);
       if (selectedSessionIdRef.current !== sessionId) return;
       eventCursor.current = nextEvents.at(-1)?.sequence ?? 0;
-      setMessages(nextMessages);
-      setEvents(filterActiveProgressEvents(nextEvents, nextMessages));
-      setActiveProgress(buildActiveProgress(nextEvents, nextMessages));
-      setArtifacts(nextArtifacts);
-      setServices(nextServices);
-      setExternalResources(nextExternalResources);
-      setCallbacks(nextCallbacks);
+      setSessionDetail({
+        messages: nextMessages,
+        events: filterActiveProgressEvents(nextEvents, nextMessages),
+        activeProgress: buildActiveProgress(nextEvents, nextMessages),
+        artifacts: nextArtifacts,
+        services: nextServices,
+        externalResources: nextExternalResources,
+        callbacks: nextCallbacks,
+      });
       setDetailLoadedSessionId(sessionId);
     } catch (err) {
       handleApiError(err);
@@ -878,11 +916,14 @@ export function App() {
         listCallbacks(sessionId, token),
       ]);
       if (selectedSessionIdRef.current === sessionId) {
-        setMessages(nextMessages);
-        setArtifacts(nextArtifacts);
-        setServices(nextServices);
-        setExternalResources(nextExternalResources);
-        setCallbacks(nextCallbacks);
+        setSessionDetail((current) => ({
+          ...current,
+          messages: nextMessages,
+          artifacts: nextArtifacts,
+          services: nextServices,
+          externalResources: nextExternalResources,
+          callbacks: nextCallbacks,
+        }));
       }
     } finally {
       detailRefreshInFlightRef.current = null;
@@ -924,13 +965,7 @@ export function App() {
         ...current,
       ]);
       selectSession(session.id);
-      setMessages([message]);
-      setEvents([]);
-      setActiveProgress({});
-      setArtifacts([]);
-      setServices([]);
-      setExternalResources([]);
-      setCallbacks([]);
+      setSessionDetail({ ...emptySessionDetail(), messages: [message] });
       eventCursor.current = 0;
       detailLoadedSessionIdRef.current = session.id;
       setDetailLoadedSessionId(session.id);
@@ -966,7 +1001,7 @@ export function App() {
         ...(selectedFollowUpModel ? { model: selectedFollowUpModel } : {}),
         ...(followUpBranch ? { branch: followUpBranch } : {}),
       });
-      setMessages((current) => [...current, message]);
+      setSessionDetail((current) => ({ ...current, messages: [...current.messages, message] }));
       setSessions((current) =>
         current.map((session) =>
           session.id === selectedSessionId && session.status !== 'active'
@@ -1057,7 +1092,10 @@ export function App() {
         prompt: messageDraft.trim(),
         token,
       });
-      setMessages((current) => current.map((candidate) => (candidate.id === message.id ? message : candidate)));
+      setSessionDetail((current) => ({
+        ...current,
+        messages: current.messages.map((candidate) => (candidate.id === message.id ? message : candidate)),
+      }));
       await finishEditingMessage(true);
     } catch (err) {
       handleApiError(err);
@@ -1069,7 +1107,10 @@ export function App() {
     setError('');
     try {
       const message = await cancelMessage({ sessionId: selectedSessionId, messageId, token });
-      setMessages((current) => current.map((candidate) => (candidate.id === message.id ? message : candidate)));
+      setSessionDetail((current) => ({
+        ...current,
+        messages: current.messages.map((candidate) => (candidate.id === message.id ? message : candidate)),
+      }));
     } catch (err) {
       handleApiError(err);
     }
@@ -1084,7 +1125,7 @@ export function App() {
       for (const messageId of messageIds) {
         retriedMessages.push(await retryMessage({ sessionId: selectedSessionId, messageId, token }));
       }
-      setMessages((current) => [...current, ...retriedMessages]);
+      setSessionDetail((current) => ({ ...current, messages: [...current.messages, ...retriedMessages] }));
       setThreadAutoFollowEnabled(true);
       await refreshSessions();
       await refreshSessionDetail(selectedSessionId);
@@ -1100,9 +1141,12 @@ export function App() {
     setError('');
     try {
       const cancelledMessages = await cancelCurrentRun({ sessionId: selectedSessionId, token });
-      setMessages((current) =>
-        current.map((candidate) => cancelledMessages.find((message) => message.id === candidate.id) ?? candidate),
-      );
+      setSessionDetail((current) => ({
+        ...current,
+        messages: current.messages.map(
+          (candidate) => cancelledMessages.find((message) => message.id === candidate.id) ?? candidate,
+        ),
+      }));
       await refreshSessions();
     } catch (err) {
       handleApiError(err);
@@ -1128,6 +1172,10 @@ export function App() {
     } catch (err) {
       handleApiError(err);
     }
+  }
+
+  function clearSessionDetail() {
+    setSessionDetail(emptySessionDetail());
   }
 
   function signOut() {
@@ -1161,13 +1209,7 @@ export function App() {
     setSessionsLoaded(false);
     setSelectedSessionId('');
     setIsCreatingThread(false);
-    setMessages([]);
-    setEvents([]);
-    setActiveProgress({});
-    setArtifacts([]);
-    setServices([]);
-    setExternalResources([]);
-    setCallbacks([]);
+    clearSessionDetail();
     setSetupGuideOpen(false);
     sessionStorage.removeItem(setupGuideOpenStorageKey);
     setGroupsPanelOpen(false);
@@ -1191,13 +1233,7 @@ export function App() {
     setFollowUpRepository('');
     setFollowUpBranch('');
     setFollowUpModel('');
-    setMessages([]);
-    setEvents([]);
-    setActiveProgress({});
-    setArtifacts([]);
-    setServices([]);
-    setExternalResources([]);
-    setCallbacks([]);
+    clearSessionDetail();
     eventCursor.current = 0;
   }
 
@@ -1518,15 +1554,9 @@ export function App() {
   }
 
   type SessionStatusRollback = {
-    artifacts: Artifact[];
-    services: SandboxService[];
-    externalResources: ExternalResource[];
-    callbacks: CallbackDelivery[];
-    events: AgentEvent[];
-    activeProgress: ActiveProgressByMessageId;
     isCreatingThread: boolean;
-    messages: Message[];
     selectedSessionId: string;
+    sessionDetail: SessionDetailState;
     session: Session;
   };
 
@@ -1534,15 +1564,9 @@ export function App() {
     const session = sessions.find((candidate) => candidate.id === sessionId);
     if (!session) return null;
     const rollback = {
-      artifacts,
-      services,
-      externalResources,
-      callbacks,
-      events,
-      activeProgress,
       isCreatingThread,
-      messages,
       selectedSessionId,
+      sessionDetail,
       session,
     };
     applyArchivedSession({ ...session, status: 'archived' });
@@ -1559,13 +1583,7 @@ export function App() {
       sessionStorage.removeItem(newSessionSelectedStorageKey);
       setSelectedSessionId(rollback.selectedSessionId);
       setIsCreatingThread(rollback.isCreatingThread);
-      setMessages(rollback.messages);
-      setEvents(rollback.events);
-      setActiveProgress(rollback.activeProgress);
-      setArtifacts(rollback.artifacts);
-      setServices(rollback.services);
-      setExternalResources(rollback.externalResources);
-      setCallbacks(rollback.callbacks);
+      setSessionDetail(rollback.sessionDetail);
     }
   }
 
@@ -1573,15 +1591,9 @@ export function App() {
     const session = sessions.find((candidate) => candidate.id === sessionId);
     if (!session) return null;
     const rollback = {
-      artifacts,
-      services,
-      externalResources,
-      callbacks,
-      events,
-      activeProgress,
       isCreatingThread,
-      messages,
       selectedSessionId,
+      sessionDetail,
       session,
     };
     setSessions((current) =>
@@ -1598,13 +1610,7 @@ export function App() {
       sessionStorage.setItem(newSessionSelectedStorageKey, 'true');
       setSelectedSessionId('');
       setIsCreatingThread(true);
-      setMessages([]);
-      setEvents([]);
-      setActiveProgress({});
-      setArtifacts([]);
-      setServices([]);
-      setExternalResources([]);
-      setCallbacks([]);
+      clearSessionDetail();
       eventCursor.current = 0;
     }
   }
@@ -1655,7 +1661,10 @@ export function App() {
     setError('');
     try {
       const callback = await replayCallback({ sessionId: selectedSessionId, callbackId, token });
-      setCallbacks((current) => current.map((candidate) => (candidate.id === callback.id ? callback : candidate)));
+      setSessionDetail((current) => ({
+        ...current,
+        callbacks: current.callbacks.map((candidate) => (candidate.id === callback.id ? callback : candidate)),
+      }));
       await refreshSessionDetail(selectedSessionId);
     } catch (err) {
       handleApiError(err);
@@ -1687,7 +1696,10 @@ export function App() {
       setSessions((current) =>
         current.map((candidate) => (candidate.id === result.session.id ? result.session : candidate)),
       );
-      setServices((current) => [result.service, ...current.filter((service) => service.port !== result.service.port)]);
+      setSessionDetail((current) => ({
+        ...current,
+        services: [result.service, ...current.services.filter((service) => service.port !== result.service.port)],
+      }));
       if (opened) {
         opened.opener = null;
         opened.location.href = result.service.url;
