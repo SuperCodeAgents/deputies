@@ -30,6 +30,7 @@ export function GroupsSidebar(props: {
   currentUser: AuthUser | null;
   groups: Group[];
   health: Health | null;
+  navPage: 'sessions' | 'setup' | 'groups';
   selectedGroupId: string;
   selectedView: 'group' | 'super_admins';
   superAdminUsers: AuthUser[];
@@ -39,6 +40,7 @@ export function GroupsSidebar(props: {
   onCollapse: () => void;
   onCreateGroup: () => void;
   onOpenGroups: () => void;
+  onOpenSessions: () => void;
   onOpenSetup: () => void;
   onSelectGroup: (groupId: string) => void;
   onSelectSuperAdmins: () => void;
@@ -199,10 +201,10 @@ export function GroupsSidebar(props: {
         canViewSetup={props.canViewSetup}
         connectionStatus={props.connectionStatus}
         health={props.health}
-        navPage="groups"
+        navPage={props.navPage}
         token={props.token}
         onOpenGroups={props.onOpenGroups}
-        onOpenSessions={props.onBackToSessions}
+        onOpenSessions={props.onOpenSessions}
         onOpenSetup={props.onOpenSetup}
         onSignOut={props.onSignOut}
       />
@@ -552,7 +554,9 @@ function ManagedGroupPanel(props: {
                 <strong className="block truncate text-sm">
                   {member.user?.displayName || member.user?.username || member.userId}
                 </strong>
-                <p className="truncate text-xs text-muted-foreground">{member.user?.username ? member.userId : 'User ID'}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {member.user?.username ? member.userId : 'User ID'}
+                </p>
               </div>
               <SelectWithCaret
                 className="h-9"

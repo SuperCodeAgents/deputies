@@ -262,7 +262,7 @@ export function ApiStatusFooter(props: {
             aria-current={props.navPage === 'groups' ? 'page' : undefined}
             onClick={props.onOpenGroups}
           >
-            Groups
+            Access
           </Button>
         ) : null}
         {props.authRequired && (props.token || props.health?.apiAuthMode === 'session') ? (

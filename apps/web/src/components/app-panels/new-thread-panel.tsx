@@ -26,6 +26,7 @@ export function NewThreadPanel(props: {
   modelChoices: ModelChoice[];
   modelUnavailableReason: string;
   showOpenSidebar: boolean;
+  openSidebarLabel?: string;
   onOpenSidebar: () => void;
   onGroupChange: (value: string) => void;
   onPromptChange: (value: string) => void;
@@ -42,8 +43,8 @@ export function NewThreadPanel(props: {
           variant="ghost"
           size="icon"
           onClick={props.onOpenSidebar}
-          aria-label="Open sessions"
-          title="Open sessions"
+          aria-label={props.openSidebarLabel ?? 'Open sessions'}
+          title={props.openSidebarLabel ?? 'Open sessions'}
         >
           <PanelLeftOpen className="h-4 w-4" />
         </Button>

@@ -1,4 +1,12 @@
-import { ApiError, type AgentEvent, type AuthUser, type Group, type Message, type ModelChoice, type Session } from './api.js';
+import {
+  ApiError,
+  type AgentEvent,
+  type AuthUser,
+  type Group,
+  type Message,
+  type ModelChoice,
+  type Session,
+} from './api.js';
 
 export type ActiveProgress = { text: string; omitted: number };
 export type ActiveProgressByMessageId = Record<string, ActiveProgress>;

@@ -14,6 +14,7 @@ type ThreadHeaderProps = {
   workspaceToolsDisabled?: boolean;
   selectedSession: Session;
   showOpenSidebar: boolean;
+  openSidebarLabel?: string;
   workspaceToolsUnavailableReason?: string;
   onArchive: () => void;
   onOpenSidebar: () => void;
@@ -100,8 +101,8 @@ export function ThreadHeader(props: ThreadHeaderProps) {
             variant="ghost"
             size="icon"
             onClick={props.onOpenSidebar}
-            aria-label="Open sessions"
-            title="Open sessions"
+            aria-label={props.openSidebarLabel ?? 'Open sessions'}
+            title={props.openSidebarLabel ?? 'Open sessions'}
           >
             <PanelLeftOpen className="h-4 w-4" />
           </Button>
