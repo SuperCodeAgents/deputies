@@ -30,12 +30,14 @@ import {
 import { HighlightedCode } from './content/highlighted-code.js';
 
 const mobileContextOpenStorageKey = 'deputies-mobile-context-open';
+const staticDemoServiceUnavailableReason = 'Service previews are unavailable in the static demo.';
 
 export function ChatPanel(props: {
   activeProgress: Record<string, string>;
   artifacts: Artifact[];
   canWriteSession: boolean;
   services: SandboxService[];
+  serviceLinksDisabled?: boolean;
   canRetryMessages: boolean;
   editingMessageId: string;
   events: AgentEvent[];
@@ -124,6 +126,7 @@ export function ChatPanel(props: {
             {props.services.length > 0 && group.key === groups.at(-1)?.key ? (
               <InlineServices
                 services={props.services}
+                serviceLinksDisabled={props.serviceLinksDisabled ?? false}
                 canWriteSession={props.canWriteSession}
                 onExtendSandbox={props.onExtendSandbox}
               />
@@ -139,6 +142,7 @@ export function ChatPanel(props: {
 
 function InlineServices(props: {
   services: SandboxService[];
+  serviceLinksDisabled?: boolean;
   canWriteSession: boolean;
   onExtendSandbox: (port?: number) => void;
 }) {
@@ -149,6 +153,7 @@ function InlineServices(props: {
           compact
           key={service.port}
           service={service}
+          serviceLinksDisabled={props.serviceLinksDisabled ?? false}
           canWriteSession={props.canWriteSession}
           onExtendSandbox={props.onExtendSandbox}
         />
@@ -822,6 +827,7 @@ export function MobileContextPanel(props: {
   branch: string | null;
   artifacts: Artifact[];
   services: SandboxService[];
+  serviceLinksDisabled?: boolean;
   externalResources: ExternalResource[];
   callbacks: CallbackDelivery[];
   onExtendSandbox: (port?: number) => void;
@@ -854,6 +860,7 @@ export function DesktopContextPanel(props: {
   branch: string | null;
   artifacts: Artifact[];
   services: SandboxService[];
+  serviceLinksDisabled?: boolean;
   externalResources: ExternalResource[];
   callbacks: CallbackDelivery[];
   onExtendSandbox: (port?: number) => void;
@@ -878,6 +885,7 @@ function ContextPanelContent(props: {
   branch: string | null;
   artifacts: Artifact[];
   services: SandboxService[];
+  serviceLinksDisabled?: boolean;
   externalResources: ExternalResource[];
   callbacks: CallbackDelivery[];
   onExtendSandbox: (port?: number) => void;
@@ -914,9 +922,11 @@ function ContextPanelContent(props: {
       <div className="mt-3 border-b border-border pb-3 text-sm text-muted-foreground">
         <strong className="block font-medium text-foreground">Live services</strong>
         <span>
-          {props.canWriteSession
-            ? 'Authenticated links to HTTP services running inside the sandbox.'
-            : 'Service metadata is visible, but write access is required to extend.'}
+          {props.serviceLinksDisabled
+            ? staticDemoServiceUnavailableReason
+            : props.canWriteSession
+              ? 'Authenticated links to HTTP services running inside the sandbox.'
+              : 'Service metadata is visible, but write access is required to extend.'}
         </span>
       </div>
       <div className="mt-3 grid gap-2">
@@ -924,6 +934,7 @@ function ContextPanelContent(props: {
           <ServiceCard
             key={service.port}
             service={service}
+            serviceLinksDisabled={props.serviceLinksDisabled ?? false}
             canWriteSession={props.canWriteSession}
             onExtendSandbox={props.onExtendSandbox}
           />
@@ -1018,6 +1029,7 @@ function ServiceCard(props: {
   service: SandboxService;
   canWriteSession: boolean;
   compact?: boolean;
+  serviceLinksDisabled?: boolean;
   onExtendSandbox: (port?: number) => void;
 }) {
   const [now, setNow] = useState(() => Date.now());
@@ -1046,11 +1058,23 @@ function ServiceCard(props: {
           <strong className="min-w-0 text-sm leading-5 text-foreground">
             {props.service.label ?? 'Sandbox service'}
           </strong>
-          <Button asChild className="shrink-0" size="sm" variant="secondary">
-            <a href={props.service.url} target="_blank" rel="noreferrer">
+          {props.serviceLinksDisabled ? (
+            <Button
+              className="shrink-0"
+              size="sm"
+              variant="secondary"
+              disabled
+              title={staticDemoServiceUnavailableReason}
+            >
               <ExternalLink className="h-3.5 w-3.5" /> Open
-            </a>
-          </Button>
+            </Button>
+          ) : (
+            <Button asChild className="shrink-0" size="sm" variant="secondary">
+              <a href={props.service.url} target="_blank" rel="noreferrer">
+                <ExternalLink className="h-3.5 w-3.5" /> Open
+              </a>
+            </Button>
+          )}
         </div>
         <div className="min-w-0 text-xs text-muted-foreground">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">

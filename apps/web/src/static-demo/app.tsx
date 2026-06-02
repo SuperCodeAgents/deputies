@@ -170,6 +170,7 @@ function StaticSessionView(props: { demoSession: StaticDemoSession; onOpenSideba
               branch={branch}
               artifacts={props.demoSession.artifacts}
               services={services}
+              serviceLinksDisabled
               externalResources={props.demoSession.externalResources}
               callbacks={props.demoSession.callbacks}
               canWriteSession={false}
@@ -181,6 +182,7 @@ function StaticSessionView(props: { demoSession: StaticDemoSession; onOpenSideba
               artifacts={props.demoSession.artifacts}
               canWriteSession={false}
               services={services}
+              serviceLinksDisabled
               canRetryMessages={false}
               editingMessageId=""
               events={props.demoSession.events}
@@ -229,6 +231,7 @@ function StaticSessionView(props: { demoSession: StaticDemoSession; onOpenSideba
           branch={branch}
           artifacts={props.demoSession.artifacts}
           services={services}
+          serviceLinksDisabled
           externalResources={props.demoSession.externalResources}
           callbacks={props.demoSession.callbacks}
           canWriteSession={false}
