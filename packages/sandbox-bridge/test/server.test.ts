@@ -136,7 +136,7 @@ describe('sandbox bridge server', () => {
     await expect(response.json()).resolves.toMatchObject({ exitCode: 0, stdout: output });
   });
 
-  it('proxies preview traffic to localhost and strips auth cookies', async () => {
+  it('proxies preview traffic to localhost and strips platform auth cookies', async () => {
     const upstream = createServer((request, response) => {
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(
@@ -154,14 +154,113 @@ describe('sandbox bridge server', () => {
 
     try {
       const response = await bridgeFetch(`/preview/${address.port}/nested/path?x=1`, {
-        headers: { cookie: 'secret=value' },
+        headers: { cookie: 'deputies_preview=platform; dev_deputies_session=session; app_session=ok' },
       });
 
       await expect(response.json()).resolves.toEqual({
         url: '/nested/path?x=1',
         authorization: null,
-        cookie: null,
+        cookie: 'app_session=ok',
       });
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        upstream.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it('proxies preview POST bodies to localhost with content length', async () => {
+    const upstream = createServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      response.writeHead(401, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          method: request.method,
+          url: request.url,
+          contentLength: request.headers['content-length'] ?? null,
+          contentType: request.headers['content-type'] ?? null,
+          transferEncoding: request.headers['transfer-encoding'] ?? null,
+          body: Buffer.concat(chunks).toString('utf-8'),
+        }),
+      );
+    });
+    upstream.listen(0, '127.0.0.1');
+    await once(upstream, 'listening');
+    const address = upstream.address();
+    if (typeof address !== 'object' || !address) throw new Error('Expected upstream address');
+
+    try {
+      const response = await bridgeFetch(`/preview/${address.port}/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: 'username=dev&password=password',
+      });
+
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toEqual({
+        method: 'POST',
+        url: '/login',
+        contentLength: '30',
+        contentType: 'application/x-www-form-urlencoded',
+        transferEncoding: null,
+        body: 'username=dev&password=password',
+      });
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        upstream.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it('passes preview redirects back to the browser', async () => {
+    const upstream = createServer((request, response) => {
+      if (request.url === '/login') {
+        response.writeHead(302, { location: '/', 'set-cookie': 'app_session=ok; Path=/; HttpOnly; SameSite=Lax' });
+        response.end();
+        return;
+      }
+
+      response.writeHead(200, { 'content-type': 'text/plain' });
+      response.end('home');
+    });
+    upstream.listen(0, '127.0.0.1');
+    await once(upstream, 'listening');
+    const address = upstream.address();
+    if (typeof address !== 'object' || !address) throw new Error('Expected upstream address');
+
+    try {
+      const response = await bridgeFetch(`/preview/${address.port}/login`, {
+        method: 'POST',
+        redirect: 'manual',
+      });
+
+      expect(response.status).toBe(302);
+      expect(response.headers.get('location')).toBe('/');
+      expect(response.headers.get('set-cookie')).toContain('app_session=ok');
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        upstream.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it('does not forward platform-only preview cookies', async () => {
+    const upstream = createServer((request, response) => {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ cookie: request.headers.cookie ?? null }));
+    });
+    upstream.listen(0, '127.0.0.1');
+    await once(upstream, 'listening');
+    const address = upstream.address();
+    if (typeof address !== 'object' || !address) throw new Error('Expected upstream address');
+
+    try {
+      const response = await bridgeFetch(`/preview/${address.port}/`, {
+        headers: { cookie: 'deputies_preview=platform; dev_deputies_session=session' },
+      });
+
+      await expect(response.json()).resolves.toEqual({ cookie: null });
     } finally {
       await new Promise<void>((resolve, reject) => {
         upstream.close((error) => (error ? reject(error) : resolve()));

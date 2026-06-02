@@ -5,7 +5,12 @@ import path from 'node:path';
 import { ArtifactService } from '../../src/artifacts/service.js';
 import { FilesystemArtifactObjectStorage, type ArtifactObjectStorage } from '../../src/artifacts/storage.js';
 import { createServer, createServices, createWorkerHealthServer, type AppServices } from '../../src/app/server.js';
-import { previewCookieMaxAgeSeconds, previewCookieName, signPreviewAuthToken } from '../../src/auth/session.js';
+import {
+  previewCookieMaxAgeSeconds,
+  previewCookieName,
+  sessionCookieName,
+  signPreviewAuthToken,
+} from '../../src/auth/session.js';
 import { loadConfig } from '../../src/config/index.js';
 import { GitHubApiError } from '../../src/integrations/github/client.js';
 import { FakeSandboxProvider } from '../../src/sandbox/fake.js';
@@ -1261,27 +1266,52 @@ describe('core API', () => {
       expect(previewAuth.headers.get('location')).toBe('/');
       const previewCookie = previewAuth.headers.get('set-cookie');
       expect(previewCookie).toContain('deputies_preview=');
+      const previewCookiePair = `${previewCookieName}=${cookieValue(previewCookie!, previewCookieName)}`;
 
       const previewGet = await fetch(`${baseUrl}/`, {
-        headers: { cookie: previewCookie!, 'x-forwarded-host': serviceHost },
+        headers: { cookie: previewCookiePair, 'x-forwarded-host': serviceHost },
       });
       expect(previewGet.status).toBe(200);
 
+      const appLogin = await fetch(`${baseUrl}/app-login`, {
+        method: 'POST',
+        headers: {
+          cookie: previewCookiePair,
+          'content-type': 'application/x-www-form-urlencoded',
+          'x-forwarded-host': serviceHost,
+        },
+        body: 'username=dev&password=password',
+      });
+      expect(appLogin.status).toBe(204);
+      expect(appLogin.headers.get('x-app-content-length')).toBe('30');
+      const appLoginCookie = appLogin.headers.get('set-cookie');
+      expect(appLoginCookie).toContain('app_session=ok');
+      expect(appLoginCookie).not.toContain('Domain=');
+      expect(appLoginCookie).not.toContain(`${previewCookieName}=upstream`);
+
+      const appMe = await fetch(`${baseUrl}/app-me`, {
+        headers: {
+          cookie: `${previewCookiePair}; ${sessionCookieName}=leak; app_session=ok`,
+          'x-forwarded-host': serviceHost,
+        },
+      });
+      await expect(appMe.json()).resolves.toEqual({ cookie: 'app_session=ok' });
+
       const crossSitePost = await fetch(`${baseUrl}/`, {
         method: 'POST',
-        headers: { cookie: previewCookie!, 'x-forwarded-host': serviceHost, origin: 'https://evil.example' },
+        headers: { cookie: previewCookiePair, 'x-forwarded-host': serviceHost, origin: 'https://evil.example' },
       });
       expect(crossSitePost.status).toBe(403);
 
       const sameOriginPost = await fetch(`${baseUrl}/`, {
         method: 'POST',
-        headers: { cookie: previewCookie!, 'x-forwarded-host': serviceHost, origin: `https://${serviceHost}` },
+        headers: { cookie: previewCookiePair, 'x-forwarded-host': serviceHost, origin: `https://${serviceHost}` },
       });
       expect(sameOriginPost.status).toBe(200);
 
       const headers = await fetch(`${baseUrl}/headers`, {
         headers: {
-          cookie: previewCookie!,
+          cookie: previewCookiePair,
           'x-forwarded-host': serviceHost,
           referer: previewAuthUrl.toString(),
         },
@@ -2311,6 +2341,22 @@ function createPreviewUpstream(): Server {
     if (request.url === '/headers') {
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ referer: request.headers.referer ?? null }));
+      return;
+    }
+    if (request.url === '/app-login') {
+      response.writeHead(204, {
+        'x-app-content-length': request.headers['content-length'] ?? 'missing',
+        'set-cookie': [
+          'app_session=ok; Path=/; HttpOnly; SameSite=Lax; Domain=.deputies.localhost',
+          `${previewCookieName}=upstream; Path=/`,
+        ],
+      });
+      response.end();
+      return;
+    }
+    if (request.url === '/app-me') {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ cookie: request.headers.cookie ?? null }));
       return;
     }
     if (request.url === '/') {

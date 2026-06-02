@@ -10,6 +10,7 @@ import { dirname, isAbsolute, resolve, sep } from 'node:path';
 const defaultPort = 3584;
 const defaultMaxBodyBytes = 16 * 1024 * 1024;
 const defaultMaxOutputBytes = 1024 * 1024;
+const previewBufferedBodyMaxBytes = 16 * 1024 * 1024;
 const skippedPreviewRequestHeaders = new Set([
   'accept-encoding',
   'authorization',
@@ -25,6 +26,7 @@ const skippedPreviewResponseHeaders = new Set([
   'transfer-encoding',
 ]);
 const skippedPreviewUpgradeHeaders = new Set(['authorization', 'content-length', 'cookie', 'host']);
+const skippedPreviewCookieNames = new Set(['deputies_preview', 'dev_deputies_session']);
 
 export type SandboxBridgeOptions = {
   workspacePath: string;
@@ -141,7 +143,7 @@ export function createSandboxBridgeServer(options: SandboxBridgeOptions): Server
 
       const previewMatch = url.pathname.match(/^\/preview\/(\d+)(?:\/(.*))?$/);
       if (previewMatch) {
-        await proxyPreviewRequest(request, response, previewMatch, url);
+        await proxyPreviewRequest(request, response, previewMatch, url, maxBodyBytes);
         return;
       }
 
@@ -205,6 +207,8 @@ function upgradeRequestHead(request: IncomingMessage, target: URL): string {
     if (lower === 'origin') hasOrigin = true;
     appendHeaderValues(headers, key, value);
   }
+  const cookie = previewCookieHeader(headerValue(request.headers.cookie));
+  if (cookie) headers.push(['cookie', cookie]);
   if (!hasOrigin) headers.push(['origin', target.origin]);
   return [
     `${request.method ?? 'GET'} ${target.pathname || '/'}${target.search} HTTP/1.1`,
@@ -219,6 +223,7 @@ async function proxyPreviewRequest(
   response: ServerResponse,
   match: RegExpMatchArray,
   requestUrl: URL,
+  maxBodyBytes: number,
 ): Promise<void> {
   const port = Number(match[1]);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new BridgeHttpError(400, 'Invalid preview port');
@@ -226,10 +231,14 @@ async function proxyPreviewRequest(
   const target = new URL(`http://127.0.0.1:${port}${path}`);
   target.search = requestUrl.search;
   const headers = previewHeaders(request.headers);
-  const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : request;
-  const upstream = await fetch(target, { method: request.method, headers, body, duplex: 'half' } as RequestInit & {
-    duplex: 'half';
-  });
+  const body = await previewRequestBody(request, maxBodyBytes);
+  const upstream = await fetch(target, {
+    method: request.method,
+    headers,
+    body,
+    redirect: 'manual',
+    duplex: 'half',
+  } as RequestInit & { duplex: 'half' });
   response.writeHead(upstream.status, Object.fromEntries(previewResponseHeaders(upstream.headers).entries()));
   if (!upstream.body) {
     response.end();
@@ -248,6 +257,18 @@ async function proxyPreviewRequest(
   }
 }
 
+async function previewRequestBody(
+  request: IncomingMessage,
+  maxBodyBytes: number,
+): Promise<Buffer | IncomingMessage | undefined> {
+  if (request.method === 'GET' || request.method === 'HEAD') return undefined;
+  const contentLength = Number(request.headers['content-length']);
+  if (Number.isFinite(contentLength) && contentLength <= previewBufferedBodyMaxBytes) {
+    return readBody(request, Math.min(maxBodyBytes, previewBufferedBodyMaxBytes));
+  }
+  return request;
+}
+
 function previewHeaders(input: IncomingMessage['headers']): Headers {
   const headers = new Headers();
   for (const [key, value] of Object.entries(input)) {
@@ -256,6 +277,8 @@ function previewHeaders(input: IncomingMessage['headers']): Headers {
     if (Array.isArray(value)) for (const item of value) headers.append(key, item);
     else if (value !== undefined) headers.set(key, value);
   }
+  const cookie = previewCookieHeader(headerValue(input.cookie));
+  if (cookie) headers.set('cookie', cookie);
   headers.set('accept-encoding', 'identity');
   return headers;
 }
@@ -275,6 +298,22 @@ function appendHeaderValues(headers: Array<[string, string]>, key: string, value
     return;
   }
   if (value !== undefined) headers.push([key, value]);
+}
+
+function headerValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value.join('; ') : value;
+}
+
+function previewCookieHeader(header: string | undefined): string | undefined {
+  if (!header) return undefined;
+  const cookies = header
+    .split(';')
+    .map((part) => part.trim())
+    .filter((part) => {
+      const name = part.split('=')[0]?.trim();
+      return name && !skippedPreviewCookieNames.has(name);
+    });
+  return cookies.length ? cookies.join('; ') : undefined;
 }
 
 async function execCommand(

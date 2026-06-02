@@ -12,6 +12,7 @@ import {
   previewCookieMaxAgeSeconds,
   previewGrantMaxAgeSeconds,
   readPreviewCookie,
+  sessionCookieName,
   signPreviewAuthToken,
   type PreviewAuthToken,
   verifyPreviewAuthToken,
@@ -31,6 +32,8 @@ type PreviewAuthorization = {
   canWrite: boolean;
   cookie?: string;
 };
+
+const previewBufferedBodyMaxBytes = 16 * 1024 * 1024;
 
 export async function getSessionService(
   config: AppConfig,
@@ -96,10 +99,11 @@ export async function proxyService(
 ): Promise<Response> {
   const target = previewTargetUrl(c, preview.targetUrl);
   const request = c.req.raw;
+  const body = await previewRequestBody(request);
   const response = await fetch(target, {
     method: request.method,
     headers: previewRequestHeaders(request.headers, preview.targetHeaders),
-    body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
+    body,
     redirect: 'manual',
     duplex: 'half',
   } as RequestInit & { duplex: 'half' });
@@ -109,6 +113,15 @@ export async function proxyService(
     statusText: response.statusText,
     headers,
   });
+}
+
+async function previewRequestBody(request: Request): Promise<RequestInit['body'] | undefined> {
+  if (request.method === 'GET' || request.method === 'HEAD') return undefined;
+  const contentLength = Number(request.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength <= previewBufferedBodyMaxBytes) {
+    return request.arrayBuffer();
+  }
+  return request.body ?? undefined;
 }
 
 export function appendPreviewCookie(response: Response, cookie: string | undefined): Response {
@@ -584,6 +597,8 @@ function previewUpgradeHeaders(
     if (Array.isArray(value)) for (const item of value) headers.push([key, item]);
     else if (value !== undefined) headers.push([key, value]);
   }
+  const cookie = previewCookieHeader(stringHeader(request.headers.cookie) ?? null);
+  if (cookie) headers.push(['cookie', cookie]);
   const origin = previewUpstreamOrigin(target);
   if (!preserveOrigin && origin) headers.push(['origin', origin]);
   for (const [key, value] of Object.entries(injected)) headers.push([key, value]);
@@ -605,6 +620,49 @@ function parseCookieHeader(header: string): Record<string, string> {
     cookies[name] = rest.join('=');
   }
   return cookies;
+}
+
+function previewCookieHeader(header: string | null): string | undefined {
+  if (!header) return undefined;
+  const cookies = header
+    .split(';')
+    .map((part) => part.trim())
+    .filter((part) => {
+      const name = part.split('=')[0]?.trim();
+      return name && !isPlatformCookieName(name);
+    });
+  return cookies.length ? cookies.join('; ') : undefined;
+}
+
+function isPlatformCookieName(name: string): boolean {
+  return name === previewCookieName || name === sessionCookieName;
+}
+
+function previewSetCookieHeaders(input: Headers): string[] {
+  const getSetCookie = (input as Headers & { getSetCookie?: () => string[] }).getSetCookie;
+  if (typeof getSetCookie === 'function') return getSetCookie.call(input);
+  const header = input.get('set-cookie');
+  return header ? splitSetCookieHeader(header) : [];
+}
+
+function splitSetCookieHeader(header: string): string[] {
+  return header
+    .split(/,(?=\s*[^;,=\s]+=)/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function sanitizePreviewSetCookie(header: string): string | undefined {
+  const [nameValue, ...attributes] = header.split(';');
+  const name = nameValue?.split('=')[0]?.trim();
+  if (!nameValue || !name || isPlatformCookieName(name)) return undefined;
+  const sanitized = [nameValue.trim()];
+  for (const attribute of attributes) {
+    const value = attribute.trim();
+    if (!value || value.toLowerCase().startsWith('domain=')) continue;
+    sanitized.push(value);
+  }
+  return sanitized.join('; ');
 }
 
 async function readPreviewAuthUser(
@@ -707,6 +765,8 @@ function previewRequestHeaders(input: Headers, injected: Record<string, string> 
     if (['authorization', 'cookie', 'host', 'connection', 'content-length', 'referer'].includes(lower)) continue;
     headers.set(key, value);
   }
+  const cookie = previewCookieHeader(input.get('cookie'));
+  if (cookie) headers.set('cookie', cookie);
   for (const [key, value] of Object.entries(injected)) headers.set(key, value);
   return headers;
 }
@@ -718,6 +778,10 @@ function previewResponseHeaders(input: Headers): Headers {
     if (['connection', 'content-encoding', 'content-length', 'set-cookie', 'transfer-encoding'].includes(lower))
       continue;
     headers.set(key, value);
+  }
+  for (const cookie of previewSetCookieHeaders(input)) {
+    const sanitized = sanitizePreviewSetCookie(cookie);
+    if (sanitized) headers.append('set-cookie', sanitized);
   }
   return headers;
 }
