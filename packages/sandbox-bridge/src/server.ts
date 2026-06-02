@@ -17,6 +17,9 @@ const skippedPreviewRequestHeaders = new Set([
   'content-length',
   'cookie',
   'host',
+  'transfer-encoding',
+  'x-forwarded-host',
+  'x-original-host',
 ]);
 const skippedPreviewResponseHeaders = new Set([
   'connection',
@@ -24,7 +27,14 @@ const skippedPreviewResponseHeaders = new Set([
   'content-length',
   'transfer-encoding',
 ]);
-const skippedPreviewUpgradeHeaders = new Set(['authorization', 'content-length', 'cookie', 'host']);
+const skippedPreviewUpgradeHeaders = new Set([
+  'authorization',
+  'content-length',
+  'cookie',
+  'host',
+  'transfer-encoding',
+  'x-original-host',
+]);
 
 export type SandboxBridgeOptions = {
   workspacePath: string;
@@ -141,7 +151,7 @@ export function createSandboxBridgeServer(options: SandboxBridgeOptions): Server
 
       const previewMatch = url.pathname.match(/^\/preview\/(\d+)(?:\/(.*))?$/);
       if (previewMatch) {
-        await proxyPreviewRequest(request, response, previewMatch, url);
+        await proxyPreviewRequest(request, response, previewMatch, url, maxBodyBytes);
         return;
       }
 
@@ -219,6 +229,7 @@ async function proxyPreviewRequest(
   response: ServerResponse,
   match: RegExpMatchArray,
   requestUrl: URL,
+  maxBodyBytes: number,
 ): Promise<void> {
   const port = Number(match[1]);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new BridgeHttpError(400, 'Invalid preview port');
@@ -226,10 +237,11 @@ async function proxyPreviewRequest(
   const target = new URL(`http://127.0.0.1:${port}${path}`);
   target.search = requestUrl.search;
   const headers = previewHeaders(request.headers);
-  const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : request;
-  const upstream = await fetch(target, { method: request.method, headers, body, duplex: 'half' } as RequestInit & {
-    duplex: 'half';
-  });
+  const body =
+    request.method === 'GET' || request.method === 'HEAD' ? undefined : await readBody(request, maxBodyBytes);
+  const init: RequestInit = { method: request.method ?? 'GET', headers };
+  if (body !== undefined) init.body = body;
+  const upstream = await fetch(target, init);
   response.writeHead(upstream.status, Object.fromEntries(previewResponseHeaders(upstream.headers).entries()));
   if (!upstream.body) {
     response.end();

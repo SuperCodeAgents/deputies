@@ -2,61 +2,57 @@ import { defineConfig } from 'vite';
 import type { Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import {
+  shouldEnableServicePreviews,
+  shouldProxyServiceRequest,
+  viteHmrPath,
+  type ProxyBypassRequest,
+} from './src/vite-service-proxy.js';
 
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:3583';
 const portlessUrl = process.env.VITE_PORTLESS_URL ?? 'https://deputies.localhost';
-const allowedHosts = process.env.VITE_DEV_ALLOWED_HOSTS
-  ? process.env.VITE_DEV_ALLOWED_HOSTS.split(',')
-      .map((host) => host.trim())
-      .filter(Boolean)
-  : ['.localhost', '.ngrok-free.app', '.ngrok-free.dev', '.ngrok.io'];
+const defaultAllowedHosts = ['.localhost', '.ngrok-free.app', '.ngrok-free.dev', '.ngrok.io'];
+const rawAllowedHosts = process.env.VITE_DEV_ALLOWED_HOSTS;
+const servicePreviewsEnabled = shouldEnableServicePreviews(process.env.VITE_SERVICE_PREVIEWS);
+const allowedHosts =
+  rawAllowedHosts === undefined || rawAllowedHosts === ''
+    ? defaultAllowedHosts
+    : ['true', '1', 'True', 'TRUE'].includes(rawAllowedHosts)
+      ? true
+      : rawAllowedHosts
+          .split(',')
+          .map((host) => host.trim())
+          .filter(Boolean);
 const apiProxy = { target: apiProxyTarget };
+const apiProxyRoutes = {
+  '/health': apiProxy,
+  '/auth': apiProxy,
+  '/sessions': apiProxy,
+  '/events': apiProxy,
+  '/groups': apiProxy,
+  '/repositories': apiProxy,
+  '/models': apiProxy,
+  '/setup': apiProxy,
+  '/users': apiProxy,
+  '/webhooks': apiProxy,
+};
 const serviceProxy = {
   target: apiProxyTarget,
   ws: true,
   xfwd: true,
-  bypass(request: {
-    headers: {
-      host?: string | undefined;
-      'x-forwarded-host'?: string | string[] | undefined;
-      'x-original-host'?: string | string[] | undefined;
-    };
-    url?: string | undefined;
-  }) {
-    return isServiceRequest(request.headers) ? undefined : request.url;
+  bypass(request: ProxyBypassRequest) {
+    return shouldProxyServiceRequest(request) ? undefined : request.url;
   },
 };
-
-function isServiceRequest(headers: {
-  host?: string | undefined;
-  'x-forwarded-host'?: string | string[] | undefined;
-  'x-original-host'?: string | string[] | undefined;
-}): boolean {
-  return [headers.host, headers['x-forwarded-host'], headers['x-original-host']]
-    .flatMap((value) => (Array.isArray(value) ? value : value ? [value] : []))
-    .some((host) => host.split(',').some((item) => item.trim().startsWith('s-')));
-}
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), portlessUrlPlugin()],
   server: {
     host: '0.0.0.0',
     port: 5173,
-    hmr: { path: '/__deputies_vite_hmr' },
+    hmr: { path: viteHmrPath },
     allowedHosts,
-    proxy: {
-      '/health': apiProxy,
-      '/auth': apiProxy,
-      '/sessions': apiProxy,
-      '/events': apiProxy,
-      '/groups': apiProxy,
-      '/repositories': apiProxy,
-      '/models': apiProxy,
-      '/setup': apiProxy,
-      '/users': apiProxy,
-      '/webhooks': apiProxy,
-      '/': serviceProxy,
-    },
+    proxy: servicePreviewsEnabled ? { ...apiProxyRoutes, '/': serviceProxy } : apiProxyRoutes,
   },
 });
 
