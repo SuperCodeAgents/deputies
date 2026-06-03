@@ -202,10 +202,10 @@ export class DaytonaSandboxProvider implements SandboxProvider {
     const params: Record<string, unknown> = { labels };
     if (this.options.idleTimeoutMs)
       params.autoStopInterval = Math.max(1, Math.ceil(this.options.idleTimeoutMs / 60_000));
+    const workspacePath = this.options.workspacePath ?? '/workspace';
     params.envVars = {
       ...(this.options.envVars ?? {}),
-      DEPUTIES_SANDBOX_TOKEN: bridgeToken,
-      DEPUTIES_WORKSPACE: this.options.workspacePath ?? '/workspace',
+      DEPUTIES_WORKSPACE: workspacePath,
       DEPUTIES_SANDBOX_BRIDGE_HOST: '0.0.0.0',
       DEPUTIES_SANDBOX_BRIDGE_PORT: String(daytonaBridgePort),
     };

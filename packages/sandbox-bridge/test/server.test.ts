@@ -87,15 +87,61 @@ describe('sandbox bridge server', () => {
   });
 
   it('does not expose the bridge token to commands', async () => {
+    const originalToken = process.env.DEPUTIES_SANDBOX_TOKEN;
+    const originalPrefixedToken = process.env.DEPUTIES_SANDBOX_COMMAND_ENV_DEPUTIES_SANDBOX_TOKEN;
     process.env.DEPUTIES_SANDBOX_TOKEN = 'parent-token';
+    process.env.DEPUTIES_SANDBOX_COMMAND_ENV_DEPUTIES_SANDBOX_TOKEN = 'prefixed-token';
 
-    const response = await bridgeFetch('/exec', {
-      method: 'POST',
-      body: JSON.stringify({ command: 'printf "${DEPUTIES_SANDBOX_TOKEN:-missing}"' }),
-    });
+    try {
+      const response = await bridgeFetch('/exec', {
+        method: 'POST',
+        body: JSON.stringify({ command: 'printf "${DEPUTIES_SANDBOX_TOKEN:-missing}"' }),
+      });
 
-    await expect(response.json()).resolves.toMatchObject({ stdout: 'missing' });
-    delete process.env.DEPUTIES_SANDBOX_TOKEN;
+      await expect(response.json()).resolves.toMatchObject({ stdout: 'missing' });
+    } finally {
+      if (originalToken === undefined) delete process.env.DEPUTIES_SANDBOX_TOKEN;
+      else process.env.DEPUTIES_SANDBOX_TOKEN = originalToken;
+      if (originalPrefixedToken === undefined) delete process.env.DEPUTIES_SANDBOX_COMMAND_ENV_DEPUTIES_SANDBOX_TOKEN;
+      else process.env.DEPUTIES_SANDBOX_COMMAND_ENV_DEPUTIES_SANDBOX_TOKEN = originalPrefixedToken;
+    }
+  });
+
+  it('passes explicitly prefixed bridge env to commands', async () => {
+    const originalValue = process.env.DEPUTIES_SANDBOX_COMMAND_ENV_PUBLIC_SETTING;
+    process.env.DEPUTIES_SANDBOX_COMMAND_ENV_PUBLIC_SETTING = 'visible';
+
+    try {
+      const response = await bridgeFetch('/exec', {
+        method: 'POST',
+        body: JSON.stringify({ command: 'printf "$PUBLIC_SETTING"' }),
+      });
+
+      await expect(response.json()).resolves.toMatchObject({ stdout: 'visible' });
+    } finally {
+      if (originalValue === undefined) delete process.env.DEPUTIES_SANDBOX_COMMAND_ENV_PUBLIC_SETTING;
+      else process.env.DEPUTIES_SANDBOX_COMMAND_ENV_PUBLIC_SETTING = originalValue;
+    }
+  });
+
+  it('does not inherit arbitrary bridge process secrets', async () => {
+    const originalSecret = process.env.GITHUB_OAUTH_CLIENT_SECRET;
+    process.env.GITHUB_OAUTH_CLIENT_SECRET = 'parent-secret';
+
+    try {
+      const response = await bridgeFetch('/exec', {
+        method: 'POST',
+        body: JSON.stringify({
+          command: 'printf "${GITHUB_OAUTH_CLIENT_SECRET:-missing}:$GREETING"',
+          env: { GREETING: 'hello' },
+        }),
+      });
+
+      await expect(response.json()).resolves.toMatchObject({ stdout: 'missing:hello' });
+    } finally {
+      if (originalSecret === undefined) delete process.env.GITHUB_OAUTH_CLIENT_SECRET;
+      else process.env.GITHUB_OAUTH_CLIENT_SECRET = originalSecret;
+    }
   });
 
   it('times out commands using milliseconds', async () => {

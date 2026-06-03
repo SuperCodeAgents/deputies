@@ -144,7 +144,6 @@ function createBashOperations(sandbox: SandboxHandle): BashOperations {
       const result = await sandbox.exec({
         command,
         cwd,
-        ...(options.env ? { env: stringifyEnv(options.env) } : {}),
         ...(options.timeout ? { timeoutMs: options.timeout * 1000 } : {}),
         ...(options.signal ? { signal: options.signal } : {}),
       });
@@ -498,10 +497,6 @@ function joinShellArgs(args: string[]): string {
 function shellQuote(value: string): string {
   if (/^[a-zA-Z0-9_./:@%+=,-]+$/.test(value)) return value;
   return `'${value.replace(/'/g, `'"'"'`)}'`;
-}
-
-function stringifyEnv(env: NodeJS.ProcessEnv): Record<string, string> {
-  return Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined));
 }
 
 function requireFs(sandbox: SandboxHandle): SandboxFileSystem {

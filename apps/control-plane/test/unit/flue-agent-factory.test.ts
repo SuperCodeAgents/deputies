@@ -5,6 +5,19 @@ import { RealFlueAgentFactory } from '../../src/runner-flue/agent-factory.js';
 import type { SandboxHandle } from '../../src/sandbox/types.js';
 
 describe('RealFlueAgentFactory', () => {
+  it('does not capture process env by default', () => {
+    const originalSecret = process.env.GITHUB_OAUTH_CLIENT_SECRET;
+    process.env.GITHUB_OAUTH_CLIENT_SECRET = 'host-secret';
+    try {
+      const factory = new RealFlueAgentFactory({ model: false });
+
+      expect((factory as unknown as { env: Record<string, unknown> }).env).toEqual({});
+    } finally {
+      if (originalSecret === undefined) delete process.env.GITHUB_OAUTH_CLIENT_SECRET;
+      else process.env.GITHUB_OAUTH_CLIENT_SECRET = originalSecret;
+    }
+  });
+
   it('creates a Flue agent backed by the product sandbox handle', async () => {
     const saved = new Map<string, unknown>();
     const agent = await new RealFlueAgentFactory({

@@ -28,7 +28,7 @@ const piMock = vi.hoisted(() => ({
 
 type SandboxPiTool = ReturnType<typeof createSandboxPiToolDefinitions>[number];
 type SandboxPiToolResult = Awaited<ReturnType<SandboxPiTool['execute']>>;
-type ExecCall = { command: string; cwd?: string; timeoutMs?: number };
+type ExecCall = { command: string; cwd?: string; env?: Record<string, string>; timeoutMs?: number };
 
 vi.mock('@earendil-works/pi-coding-agent', async (importOriginal) => {
   const { readFileSync } = await import('node:fs');
@@ -829,6 +829,7 @@ describe('createSandboxPiToolDefinitions', () => {
     expect(textResult(bashResult)).toContain('ran: pwd');
     expect(execCalls).toHaveLength(1);
     expect(execCalls[0]).toMatchObject({ command: 'pwd', cwd: '/workspace' });
+    expect(execCalls[0]?.env).toBeUndefined();
 
     const grepResult = await executeTool(tools, 'grep', { pattern: 'greeting', glob: '*.ts' });
     expect(textResult(grepResult)).toContain('src/app.ts:1: const greeting = "hello";');
@@ -849,6 +850,7 @@ describe('createSandboxPiToolDefinitions', () => {
     expect(textResult(lsResult)).toContain('notes.md');
     expect(execCalls).toHaveLength(5);
     expect(execCalls[0]).toMatchObject({ command: 'pwd', cwd: '/workspace' });
+    expect(execCalls[0]?.env).toBeUndefined();
     expect(execCalls[1]).toMatchObject({
       command: expect.stringContaining('rg --json'),
       cwd: '/workspace',
@@ -869,6 +871,25 @@ describe('createSandboxPiToolDefinitions', () => {
       cwd: '/workspace',
       timeoutMs: 30_000,
     });
+  });
+
+  it('does not pass Pi worker environment to sandbox bash commands', async () => {
+    const originalSecret = process.env.GITHUB_OAUTH_CLIENT_SECRET;
+    process.env.GITHUB_OAUTH_CLIENT_SECRET = 'worker-secret';
+    try {
+      const execCalls: ExecCall[] = [];
+      const sandbox = createMemorySandbox({ execCalls });
+
+      await executeTool(createSandboxPiToolDefinitions(sandbox, sandbox.workspacePath), 'bash', {
+        command: 'printenv',
+      });
+
+      expect(execCalls).toHaveLength(1);
+      expect(execCalls[0]?.env).toBeUndefined();
+    } finally {
+      if (originalSecret === undefined) delete process.env.GITHUB_OAUTH_CLIENT_SECRET;
+      else process.env.GITHUB_OAUTH_CLIENT_SECRET = originalSecret;
+    }
   });
 
   it('skips grep context reads for large files', async () => {
@@ -986,6 +1007,7 @@ function createMemorySandbox(options: { execCalls?: ExecCall[] } = {}): SandboxH
       options.execCalls?.push({
         command: input.command,
         ...(input.cwd ? { cwd: input.cwd } : {}),
+        ...(input.env ? { env: input.env } : {}),
         ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
       });
       const now = new Date();

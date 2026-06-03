@@ -75,6 +75,8 @@ RUN useradd -m -s /bin/bash sandbox \
   && mkdir -p /workspace \
   && chown -R sandbox:sandbox /workspace /home/sandbox /opt/deputies
 
+COPY --chmod=0755 deploy/sandboxes/docker/start-bridge.sh /opt/deputies/start-bridge.sh
+
 USER sandbox
 WORKDIR /workspace
 
@@ -84,4 +86,4 @@ COPY --from=playwright-browsers --chown=root:root /ms-playwright /ms-playwright
 
 EXPOSE 3584
 
-CMD ["node", "/opt/deputies/sandbox-bridge/dist/server.js"]
+CMD ["/opt/deputies/start-bridge.sh"]

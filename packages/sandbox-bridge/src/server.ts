@@ -16,6 +16,9 @@ import { dirname, isAbsolute, resolve, sep } from 'node:path';
 const defaultPort = 3584;
 const defaultMaxBodyBytes = 16 * 1024 * 1024;
 const defaultMaxOutputBytes = 1024 * 1024;
+const defaultCommandPath = '/usr/lib/postgresql/16/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
+const commandEnvPrefix = 'DEPUTIES_SANDBOX_COMMAND_ENV_';
+const envKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const previewBufferedBodyMaxBytes = 16 * 1024 * 1024;
 const previewHostHeader = 'x-deputies-preview-host';
 const skippedPreviewRequestHeaders = new Set([
@@ -391,7 +394,7 @@ async function execCommand(
 ) {
   const startedAt = new Date();
   const cwd = input.cwd ? resolveWorkspacePath(workspacePath, input.cwd) : workspacePath;
-  const env = createCommandEnv(input.env);
+  const env = createCommandEnv(workspacePath, input.env);
   const timeoutMs = input.timeoutMs;
 
   return new Promise((resolveResult, reject) => {
@@ -510,19 +513,41 @@ function parseExecRequest(value: unknown): ParsedExecRequest {
   return parsed;
 }
 
-function createCommandEnv(inputEnv: unknown): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env };
+function createCommandEnv(workspacePath: string, inputEnv: unknown): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    DEPUTIES_WORKSPACE: process.env.DEPUTIES_WORKSPACE ?? workspacePath,
+    HOME: process.env.HOME ?? workspacePath,
+    LANG: process.env.LANG ?? 'C.UTF-8',
+    LOGNAME: process.env.LOGNAME ?? process.env.USER ?? 'sandbox',
+    PATH: process.env.PATH ?? defaultCommandPath,
+    SHELL: process.env.SHELL ?? '/bin/sh',
+    TERM: process.env.TERM ?? 'xterm',
+    TMPDIR: process.env.TMPDIR ?? '/tmp',
+    USER: process.env.USER ?? 'sandbox',
+    ...prefixedCommandEnv(process.env),
+  };
+  if (inputEnv) {
+    for (const [key, value] of Object.entries(inputEnv as Record<string, string>)) env[key] = value;
+  }
   delete env.DEPUTIES_SANDBOX_TOKEN;
-  if (!inputEnv) return env;
-  for (const [key, value] of Object.entries(inputEnv as Record<string, string>)) env[key] = value;
-  delete env.DEPUTIES_SANDBOX_TOKEN;
+  return env;
+}
+
+function prefixedCommandEnv(source: NodeJS.ProcessEnv): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (!key.startsWith(commandEnvPrefix) || value === undefined) continue;
+    const commandEnvKey = key.slice(commandEnvPrefix.length);
+    if (!envKeyPattern.test(commandEnvKey)) throw new Error(`Invalid command env key: ${commandEnvKey}`);
+    env[commandEnvKey] = value;
+  }
   return env;
 }
 
 function validateEnv(value: unknown): void {
   const env = readObject(value);
   for (const [key, envValue] of Object.entries(env)) {
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new BridgeHttpError(400, `Invalid env key: ${key}`);
+    if (!envKeyPattern.test(key)) throw new BridgeHttpError(400, `Invalid env key: ${key}`);
     if (typeof envValue !== 'string') throw new BridgeHttpError(400, `Env value must be a string: ${key}`);
   }
 }

@@ -37,7 +37,7 @@ export class RealFlueAgentFactory implements FlueAgentFactory {
 
   constructor(private readonly options: RealFlueAgentFactoryOptions) {
     this.sessionStore = options.sessionStore ?? new InMemorySessionStore();
-    this.env = options.env ?? process.env;
+    this.env = options.env ?? {};
     for (const [provider, settings] of Object.entries(options.providers ?? {})) {
       configureProvider(provider, settings);
     }

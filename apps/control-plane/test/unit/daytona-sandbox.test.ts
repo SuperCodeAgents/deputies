@@ -23,20 +23,20 @@ describe('DaytonaSandboxProvider', () => {
     });
     const handle = await provider.create({ sessionId: 'session-1', metadata: { owner: 'test' } });
 
-    expect(createCalls).toEqual([
-      {
-        image: 'ubuntu:latest',
-        autoStopInterval: 15,
-        envVars: {
-          NODE_ENV: 'test',
-          DEPUTIES_SANDBOX_TOKEN: expect.any(String),
-          DEPUTIES_WORKSPACE: '/workspace',
-          DEPUTIES_SANDBOX_BRIDGE_HOST: '0.0.0.0',
-          DEPUTIES_SANDBOX_BRIDGE_PORT: '3584',
-        },
-        labels: { app: 'flue-bg-agents', 'flue-session-id': 'session-1' },
-      },
-    ]);
+    expect(createCalls).toHaveLength(1);
+    expect(createCalls[0]).toMatchObject({
+      image: 'ubuntu:latest',
+      autoStopInterval: 15,
+      labels: { app: 'flue-bg-agents', 'flue-session-id': 'session-1' },
+    });
+    const envVars = (createCalls[0] as { envVars: Record<string, string> }).envVars;
+    expect(envVars).toMatchObject({
+      NODE_ENV: 'test',
+      DEPUTIES_WORKSPACE: '/workspace',
+      DEPUTIES_SANDBOX_BRIDGE_HOST: '0.0.0.0',
+      DEPUTIES_SANDBOX_BRIDGE_PORT: '3584',
+    });
+    expect(envVars.DEPUTIES_SANDBOX_TOKEN).toBeUndefined();
     expect(handle).toMatchObject({
       provider: 'daytona',
       providerSandboxId: 'sandbox-1',
@@ -79,6 +79,30 @@ describe('DaytonaSandboxProvider', () => {
     await handle.exec({ command: 'sleep 5', timeoutMs: 2500 });
 
     expect(calls).toEqual([['sleep 5', undefined, undefined, 3]]);
+  });
+
+  it('passes explicit command env to Daytona exec without adding parent env', async () => {
+    const sandbox = createMockDaytonaSandbox();
+    const calls: unknown[][] = [];
+    sandbox.process.executeCommand = async (...args) => {
+      calls.push(args);
+      return { result: 'ok', exitCode: 0 };
+    };
+    const provider = new DaytonaSandboxProvider({
+      client: {
+        async create() {
+          return sandbox;
+        },
+        async get() {
+          return sandbox;
+        },
+      },
+    });
+    const handle = await provider.connect({ providerSandboxId: 'sandbox-1', sessionId: 'session-1' });
+
+    await handle.exec({ command: 'env | sort', env: { GREETING: 'hello' } });
+
+    expect(calls).toEqual([['env | sort', undefined, { GREETING: 'hello' }, undefined]]);
   });
 
   it('does not start Daytona exec when the caller signal is already aborted', async () => {
