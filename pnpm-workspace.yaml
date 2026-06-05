@@ -1,8 +1,13 @@
 packages:
   - apps/*
   - packages/*
+minimumReleaseAge: 4320
 allowBuilds:
+  '@google/genai': false
+  '@mongodb-js/zstd': false
   esbuild: true
+  node-liblzma: false
+  protobufjs: false
   sharp: true
 patchedDependencies:
   '@flue/runtime@0.8.0': patches/@flue__runtime@0.8.0.patch

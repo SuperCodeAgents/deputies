@@ -3,7 +3,7 @@ experimental_monorepo_root = true
 [tools]
 fzf = "0.66"
 node = "24"
-pnpm = "10.33"
+"npm:pnpm" = "11.5.2"
 
 [tasks.install]
 description = "Install project dependencies"
